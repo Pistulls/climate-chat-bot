@@ -1,6 +1,6 @@
 # Climate research sources
 
-Local PDF copies of the 18 sources listed in the **Climate Chat Bot Research & Design** doc
+Local PDF copies of the 29 sources listed in the **Climate Chat Bot Research & Design** doc
 ([Climate research sources](https://claude.ai/artifact/A6XhdN8L4E9XcqTUe6YRcu) tab), for loading into the vector database.
 
 PDFs are in [`docs/`](docs/). Where a source is a web page or data portal, not a published
@@ -27,6 +27,28 @@ before each ingest, because the data changes.
 | 16 | Method | [The Debunking Handbook 2020 (Lewandowsky, Cook et al.)](https://www.climatechangecommunication.org/debunking-handbook-2020/) | [PDF](docs/16-debunking-handbook-2020.pdf) | Copy hosted by Skeptical Science. The original site had an SSL error when this was captured |
 | 17 | Paper | [Cook, Lewandowsky & Ecker 2017, Neutralizing misinformation through inoculation (PLOS ONE)](https://doi.org/10.1371/journal.pone.0175799) | [PDF](docs/17-cook-2017-inoculation.pdf) | |
 | 18 | Taxonomy / dataset | [Coan et al. 2021, Computer-assisted classification of contrarian claims (CARDS)](https://www.nature.com/articles/s41598-021-01714-4) | [PDF](docs/18-coan-2021-cards-contrarian-claims.pdf) | |
+
+## Energy and economics sources
+
+Sources for questions about battery prices, power growth by source, and petrol and diesel prices. Snapshots in this section were captured on 2026-11-22.
+
+**Check before launch:** #21, #22 and #23 are licensed for non-commercial use only.
+
+| # | Topic | Source | Local copy | Reuse terms | Notes |
+|---|-------|--------|------------|-------------|-------|
+| 19 | Battery prices | [IEA Global EV Outlook 2026](https://www.iea.org/reports/global-ev-outlook-2026/electric-vehicle-batteries) | [PDF](docs/19-iea-global-ev-outlook-2026.pdf) | CC BY 4.0 | Full report (295 pages). Copy hosted by the [Clean Energy Ministerial](https://www.cleanenergyministerial.org/content/uploads/2026/05/globalevoutlook2026.pdf), because iea.org blocks automated downloads |
+| 20 | Battery prices | [IEA commentary: Global battery markets are growing strongly (2026)](https://www.iea.org/commentaries/global-battery-markets-are-growing-strongly-and-so-are-the-supply-risks) | **Missing** | CC BY 4.0 | iea.org shows a bot check to automated browsers. Open the page in your own browser, print to PDF and save it as `docs/20-iea-global-battery-markets-commentary-2026.pdf` |
+| 21 | Battery prices | [Ziegler & Trancik 2021, Re-examining rates of lithium-ion battery improvement and cost decline](https://pubs.rsc.org/en/content/articlehtml/2021/ee/d0ee02681f) | [PDF](docs/21-ziegler-trancik-2021-battery-cost-decline.pdf) | CC BY-NC 3.0 (non-commercial) | [arXiv preprint](https://arxiv.org/abs/2007.13920) (August 2020), not the published version, because RSC blocks automated downloads |
+| 22 | Generation costs | [IRENA Renewable Power Generation Costs in 2024](https://www.irena.org/Publications/2025/Jun/Renewable-Power-Generation-Costs-in-2024) | [PDF](docs/22-irena-renewable-power-generation-costs-2024.pdf) | Non-commercial use, with credit to IRENA | Full report (216 pages, 51 MB) |
+| 23 | Power growth | [IRENA Renewable Capacity Statistics 2026](https://www.irena.org/Publications) | [PDF](docs/23-irena-renewable-capacity-statistics-2026.pdf) | Non-commercial use, with credit to IRENA | Full statistics tables (69 pages) |
+| 24 | Power growth | [Ember Global Electricity Review 2026](https://ember-energy.org/latest-insights/global-electricity-review-2026/) | [PDF](docs/24-ember-global-electricity-review-2026.pdf) | CC BY 4.0 | Full report (119 pages) |
+| 25 | Power growth | [Ember Electricity Data Explorer](https://ember-energy.org/data/electricity-data-explorer/) | [PDF](docs/25-ember-electricity-data-explorer.pdf) | CC BY 4.0 | Page snapshot. The data itself downloads as CSV |
+| 26 | Long-run energy data | [Our World in Data: Energy dataset](https://github.com/owid/energy-data) | [PDF](docs/26-owid-energy-dataset.pdf) | CC BY 4.0 (OWID's own work) | Snapshot of the repository page and codebook. The data itself is a CSV/JSON file in the repository |
+| 27 | Fuel prices (US) | [EIA Gasoline and Diesel Fuel Update](https://www.eia.gov/petroleum/gasdiesel/) | [PDF](docs/27-eia-gasoline-diesel-fuel-update.pdf) | US government statistics | Page snapshot, showing prices to 16 November 2026 |
+| 28 | Fuel prices (UK) | [UK DESNZ Weekly road fuel prices](https://www.gov.uk/government/statistics/weekly-road-fuel-prices) | [PDF](docs/28-uk-desnz-weekly-road-fuel-prices.pdf) | UK government open data | Page snapshot. The data itself downloads as CSV/Excel |
+| 29 | Fuel prices (EU) | [European Commission Weekly Oil Bulletin](https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en) | [PDF](docs/29-ec-weekly-oil-bulletin.pdf) | Reproduction allowed with credit | Page snapshot. The data itself downloads as Excel |
+
+**Left out because their reuse terms are unclear:** the BloombergNEF battery price survey (full report is paid) and the Energy Institute Statistical Review of World Energy 2026. Much of the Energy Institute's data is already included through Our World in Data (#26).
 
 ## Related prior work
 
