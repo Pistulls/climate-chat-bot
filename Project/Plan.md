@@ -6,7 +6,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 
 | # | Plan | Status | Notes |
 |---|---|---|---|
-| 01 | [Infrastructure](Plans/01.Infra.md) | In progress | Bootstrap, dev and prod applied; end-to-end checks pass. Left: merge to main so CI applies prod, then a cost check after a week. Runbook: [Infrastructure/README.md](../Infrastructure/README.md) |
+| 01 | [Infrastructure](Plans/01.Infra.md) | Done | Live at climate-chat.<domain>; CI applies prod on merge to main. Runbook: [Infrastructure/README.md](../Infrastructure/README.md) |
 | 02 | Ingestion (sources → `sources` index) | Not started | |
 | 03 | Python service (`/api/chat`) | Not started | |
 | 04 | Solid UI | Not started | |
