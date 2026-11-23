@@ -7,7 +7,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 | # | Plan | Status | Notes |
 |---|---|---|---|
 | 01 | [Infrastructure](Plans/01.Infra.md) | Done | Live at climate-chat.<domain>; CI applies prod on merge to main. Runbook: [Infrastructure/README.md](../Infrastructure/README.md) |
-| 02 | [Ingestion](Plans/02.Ingestion.md) | In progress | Python CLI: manifest → extract → chunk → embed → load → eval. Settles the embedding model with a 20-myth bake-off. Phase 0 done: ~963k tokens, pdfplumber |
+| 02 | [Ingestion](Plans/02.Ingestion.md) | In progress | Python CLI: manifest → extract → chunk → embed → load → eval. Settles the embedding model with a 20-myth bake-off. Phases 0–1 done: ~963k tokens, pdfplumber, embeddings client with tests |
 | 03 | Python service (`/api/chat`) | Not started | |
 | 04 | Solid UI | Not started | |
 
@@ -52,3 +52,5 @@ Status values: Not started, Planned, In progress, Done.
 - **pdfplumber is the PDF extractor**, keeping upright characters only. pypdf turned #22 IRENA's numbers into about 20,000 glyph names, even with its `fonts` extra.
 - **Non-commercial sources (#21–#23) are ingested with a filterable `licence` key.** Whether to use them at launch stays open, and can be enforced with a query filter.
 - **#10 (NASA sea level) isn't ingested** until a better data source replaces it.
+- **Query latency is part of the embedding bake-off.** Qwen3 measured 0.6–30 s per query on OpenRouter (`text-embedding-3-small`: 0.3–0.5 s), and the service embeds every claim inside its 4–6 s budget. A model with p95 over 2 s is ruled out before recall is compared.
+- **`Infrastructure/` is excluded from ruff**, so Python formatting never touches the deployed Lambda placeholder or triggers an infra CI run.
