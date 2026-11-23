@@ -1,0 +1,120 @@
+# Retrieval evaluation: climate-sceptic claims and the sources that should answer them.
+#
+# Each claim is written in the neutral one-sentence form the Classify LLM produces.
+# `expected` lists source ids from sources/manifest.toml; a myth counts as retrieved when
+# at least one of the top 5 chunks comes from one of them. `category` is the CARDS
+# super-category (Coan et al. 2021, source 18):
+#   not_happening | not_us | not_bad | solutions_wont_work | science_unreliable
+#
+# Used by `python -m climate_chat.ingest evaluate` (plan 02) and as a regression test for
+# the service (plan 03). Expected sources were checked against the chunk text, not assumed.
+
+# Global warming is not happening
+
+[[myth]]
+claim = "There has been no global warming since 1998"
+category = "not_happening"
+expected = ["04", "05", "06", "07", "08"]
+
+[[myth]]
+claim = "Sea levels are not rising any faster than they used to"
+category = "not_happening"
+expected = ["01", "02", "03", "04", "05"]
+
+[[myth]]
+claim = "Arctic sea ice is recovering, so the ice isn't really melting"
+category = "not_happening"
+expected = ["02", "03", "05", "06"]
+
+[[myth]]
+claim = "The oceans are not warming"
+category = "not_happening"
+expected = ["02", "03", "04", "05"]
+
+# Human greenhouse gases are not causing it
+
+[[myth]]
+claim = "The climate has always changed, so current warming is natural"
+category = "not_us"
+expected = ["01", "02", "03"]
+
+[[myth]]
+claim = "CO2 is a tiny fraction of the atmosphere so it can't matter"
+category = "not_us"
+expected = ["03", "09"]
+
+[[myth]]
+claim = "Recent warming is caused by the sun, not by greenhouse gases"
+category = "not_us"
+expected = ["02", "03", "04"]
+
+[[myth]]
+claim = "The rise in atmospheric CO2 comes from volcanoes and the oceans, not from humans"
+category = "not_us"
+expected = ["03", "09", "11"]
+
+# The impacts are not bad
+
+[[myth]]
+claim = "CO2 is plant food, so more of it is good for the planet"
+category = "not_bad"
+expected = ["03", "11"]
+
+[[myth]]
+claim = "Extreme weather is not getting any worse"
+category = "not_bad"
+expected = ["01", "02", "03", "05"]
+
+[[myth]]
+claim = "Climate sensitivity is low, so doubling CO2 will cause little warming"
+category = "not_bad"
+expected = ["01", "02", "03", "12"]
+
+# Climate solutions won't work
+
+[[myth]]
+claim = "Solar is pointless because it doesn't generate at night"
+category = "solutions_wont_work"
+expected = ["19", "20", "22", "24"]
+
+[[myth]]
+claim = "Renewables are more expensive than fossil fuels"
+category = "solutions_wont_work"
+expected = ["22"]
+
+[[myth]]
+claim = "Electric cars aren't cleaner because batteries are so dirty and expensive"
+category = "solutions_wont_work"
+expected = ["19", "20", "21"]
+
+[[myth]]
+claim = "Wind and solar are too unreliable to run the electricity grid"
+category = "solutions_wont_work"
+expected = ["22", "24"]
+
+[[myth]]
+claim = "Renewables are growing too slowly to replace fossil fuels"
+category = "solutions_wont_work"
+expected = ["22", "23", "24", "25", "26"]
+
+[[myth]]
+claim = "Petrol and diesel prices are soaring because of climate policies"
+category = "solutions_wont_work"
+expected = ["27", "28", "29"]
+
+[[myth]]
+claim = "There's no point in cutting emissions when China emits more than everyone else"
+category = "solutions_wont_work"
+expected = ["01", "11", "24"]
+
+# Climate science is unreliable
+
+[[myth]]
+claim = "Scientists don't agree on climate change"
+category = "science_unreliable"
+expected = ["13", "14"]
+
+[[myth]]
+claim = "Climate models have failed to predict warming"
+category = "science_unreliable"
+expected = ["12"]

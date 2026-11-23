@@ -1,0 +1,351 @@
+# Machine-readable list of the sources in index.md, read by the ingestion pipeline.
+# index.md stays the human-readable list; tests/test_manifest.py checks the two agree.
+#
+# Fields:
+#   id         two-digit number, the prefix of `file`
+#   file       PDF name under sources/docs/ (gitignored)
+#   title      shown to users when a chunk is cited
+#   url        the page the citation links to
+#   type       assessment | annual_report | data | paper | consensus | method | taxonomy | energy
+#   published  year of the document as ingested (capture year for snapshots)
+#   snapshot   true for web pages captured as PDF; these need `captured` and re-capturing
+#   captured   capture date, snapshots only
+#   licence    open | cc-by | non-commercial | gov | restricted | unverified
+#              restricted: copyright with no reuse licence (at most short extracts with credit)
+#              unverified: no terms found in the PDF or on the publisher's site
+#   ingest     false keeps a listed source out of the vector index
+
+# Climate research sources
+
+[[source]]
+id = "01"
+file = "01-ipcc-ar6-syr-spm.pdf"
+title = "IPCC AR6 Synthesis Report: Summary for Policymakers (2023)"
+url = "https://www.ipcc.ch/report/ar6/syr/summary-for-policymakers/"
+type = "assessment"
+published = 2023
+snapshot = false
+licence = "restricted"  # short extracts only, with the source (IPCC notice in the PDF)
+ingest = true
+
+[[source]]
+id = "02"
+file = "02-ipcc-ar6-wg1-spm.pdf"
+title = "IPCC AR6 WGI: The Physical Science Basis, SPM (2021)"
+url = "https://www.ipcc.ch/report/ar6/wg1/downloads/report/IPCC_AR6_WGI_SPM.pdf"
+type = "assessment"
+published = 2021
+snapshot = false
+licence = "unverified"  # no notice in this extract; ipcc.ch blocks automated reads. Likely the same as #01
+ingest = true
+
+[[source]]
+id = "03"
+file = "03-royal-society-nas-evidence-causes-2020.pdf"
+title = "Climate Change: Evidence and Causes, Update 2020 (Royal Society & US NAS)"
+url = "https://nap.nationalacademies.org/catalog/25733"
+type = "assessment"
+published = 2020
+snapshot = false
+licence = "unverified"  # no notice in the PDF; the publishers' sites say only "All rights reserved"
+ingest = true
+
+[[source]]
+id = "04"
+file = "04-forster-2026-indicators-global-climate-change-2025.pdf"
+title = "Indicators of Global Climate Change 2025 (Forster et al., ESSD 2026)"
+url = "https://essd.copernicus.org/articles/18/3889/2026/"
+type = "assessment"
+published = 2026
+snapshot = false
+licence = "cc-by"  # CC BY 4.0
+ingest = true
+
+[[source]]
+id = "05"
+file = "05-wmo-state-of-global-climate-2025.pdf"
+title = "WMO State of the Global Climate 2025"
+url = "https://library.wmo.int/idurl/4/69807"  # the e-Library record of the full report
+type = "annual_report"
+published = 2026
+snapshot = false
+licence = "restricted"  # short extracts only, with the source (WMO notice in the PDF)
+ingest = true
+
+[[source]]
+id = "06"
+file = "06-copernicus-global-climate-highlights-2025.pdf"
+title = "Copernicus Global Climate Highlights 2025"
+url = "https://climate.copernicus.eu/sites/default/files/custom-uploads/GCH-2025/GCH2025-full-report.pdf"
+type = "annual_report"
+published = 2026
+snapshot = false
+licence = "unverified"  # no notice in the PDF; C3S products use the free Copernicus licence with attribution
+ingest = true
+
+[[source]]
+id = "07"
+file = "07-nasa-giss-gistemp-v4.pdf"
+title = "NASA GISS Surface Temperature Analysis (GISTEMP v4)"
+url = "https://data.giss.nasa.gov/gistemp/"
+type = "data"
+published = 2026
+snapshot = true
+captured = 2026-11-22
+licence = "gov"  # NASA content is generally not subject to US copyright; credit NASA GISS
+ingest = true
+
+[[source]]
+id = "08"
+file = "08-berkeley-earth-temperature-data.pdf"
+title = "Berkeley Earth temperature data"
+url = "https://berkeleyearth.org/data/"
+type = "data"
+published = 2026
+snapshot = true
+captured = 2026-11-22
+licence = "non-commercial"  # CC BY-NC 4.0
+ingest = true
+
+[[source]]
+id = "09"
+file = "09-noaa-gml-co2-trends.pdf"
+title = "NOAA GML: Trends in Atmospheric CO2"
+url = "https://gml.noaa.gov/ccgg/trends/"
+type = "data"
+published = 2026
+snapshot = true
+captured = 2026-11-22
+licence = "gov"  # public domain per NOAA's disclaimer; credit NOAA GML
+ingest = true
+
+# A news hub rather than the sea level data page (the Vital Signs page now 404s).
+# Left out until a better source is found.
+[[source]]
+id = "10"
+file = "10-nasa-sea-level-rise.pdf"
+title = "NASA: Sea Level Rise"
+url = "https://www.nasa.gov/earth/climate-change/sea-level-rise/"
+type = "data"
+published = 2026
+snapshot = true
+captured = 2026-11-22
+licence = "gov"  # NASA content is generally not subject to US copyright
+ingest = false
+
+[[source]]
+id = "11"
+file = "11-global-carbon-budget-2025.pdf"
+title = "Global Carbon Budget 2025 (Friedlingstein et al., ESSD)"
+url = "https://essd.copernicus.org/articles/18/3211/2026/essd-18-3211-2026-assets.html"
+type = "data"
+published = 2026
+snapshot = false
+licence = "cc-by"  # CC BY 4.0
+ingest = true
+
+[[source]]
+id = "12"
+file = "12-hausfather-2020-model-projections.pdf"
+title = "Hausfather et al. 2020, Evaluating past climate model projections (GRL)"
+url = "https://doi.org/10.1029/2019GL085378"
+type = "paper"
+published = 2020
+snapshot = false
+licence = "restricted"  # © 2019 American Geophysical Union, all rights reserved
+ingest = true
+
+[[source]]
+id = "13"
+file = "13-cook-2013-quantifying-consensus.pdf"
+title = "Cook et al. 2013, Quantifying the consensus (ERL)"
+url = "https://iopscience.iop.org/article/10.1088/1748-9326/8/2/024024"
+type = "consensus"
+published = 2013
+snapshot = false
+licence = "cc-by"  # CC BY 3.0
+ingest = true
+
+[[source]]
+id = "14"
+file = "14-lynas-2021-99-percent-consensus.pdf"
+title = "Lynas et al. 2021, Greater than 99% consensus (ERL)"
+url = "https://doi.org/10.1088/1748-9326/ac2966"
+type = "consensus"
+published = 2021
+snapshot = false
+licence = "cc-by"  # CC BY 4.0
+ingest = true
+
+[[source]]
+id = "15"
+file = "15-cook-2026-skeptical-science-rebuttals.pdf"
+title = "Cook et al. 2026, Impact of Skeptical Science rebuttals (Geoscience Communication)"
+url = "https://gc.copernicus.org/articles/9/145/2026/"
+type = "paper"
+published = 2026
+snapshot = false
+licence = "cc-by"  # CC BY 4.0
+ingest = true
+
+[[source]]
+id = "16"
+file = "16-debunking-handbook-2020.pdf"
+title = "The Debunking Handbook 2020 (Lewandowsky, Cook et al.)"
+url = "https://www.climatechangecommunication.org/debunking-handbook-2020/"
+type = "method"
+published = 2020
+snapshot = false
+licence = "unverified"  # no licence in the PDF or on its download page
+ingest = true
+
+[[source]]
+id = "17"
+file = "17-cook-2017-inoculation.pdf"
+title = "Cook, Lewandowsky & Ecker 2017, Neutralizing misinformation through inoculation (PLOS ONE)"
+url = "https://doi.org/10.1371/journal.pone.0175799"
+type = "paper"
+published = 2017
+snapshot = false
+licence = "cc-by"  # CC BY 4.0
+ingest = true
+
+[[source]]
+id = "18"
+file = "18-coan-2021-cards-contrarian-claims.pdf"
+title = "Coan et al. 2021, Computer-assisted classification of contrarian claims (CARDS)"
+url = "https://www.nature.com/articles/s41598-021-01714-4"
+type = "taxonomy"
+published = 2021
+snapshot = false
+licence = "cc-by"  # CC BY 4.0
+ingest = true
+
+# Energy and economics sources
+
+[[source]]
+id = "19"
+file = "19-iea-global-ev-outlook-2026.pdf"
+title = "IEA Global EV Outlook 2026"
+url = "https://www.iea.org/reports/global-ev-outlook-2026/electric-vehicle-batteries"
+type = "energy"
+published = 2026
+snapshot = false
+licence = "cc-by"
+ingest = true
+
+[[source]]
+id = "20"
+file = "20-iea-global-battery-markets-commentary-2026.pdf"
+title = "IEA commentary: Global battery markets are growing strongly (2026)"
+url = "https://www.iea.org/commentaries/global-battery-markets-are-growing-strongly-and-so-are-the-supply-risks"
+type = "energy"
+published = 2026
+snapshot = false
+licence = "cc-by"
+ingest = true
+
+# CC BY-NC 3.0. The file is the arXiv preprint, so the citation links there.
+[[source]]
+id = "21"
+file = "21-ziegler-trancik-2021-battery-cost-decline.pdf"
+title = "Ziegler & Trancik 2021, Re-examining rates of lithium-ion battery improvement and cost decline"
+url = "https://arxiv.org/abs/2007.13920"
+type = "energy"
+published = 2020
+snapshot = false
+licence = "non-commercial"
+ingest = true
+
+[[source]]
+id = "22"
+file = "22-irena-renewable-power-generation-costs-2024.pdf"
+title = "IRENA Renewable Power Generation Costs in 2024"
+url = "https://www.irena.org/Publications/2025/Jun/Renewable-Power-Generation-Costs-in-2024"
+type = "energy"
+published = 2025
+snapshot = false
+licence = "non-commercial"
+ingest = true
+
+[[source]]
+id = "23"
+file = "23-irena-renewable-capacity-statistics-2026.pdf"
+title = "IRENA Renewable Capacity Statistics 2026"
+url = "https://www.irena.org/Publications"
+type = "energy"
+published = 2026
+snapshot = false
+licence = "non-commercial"
+ingest = true
+
+[[source]]
+id = "24"
+file = "24-ember-global-electricity-review-2026.pdf"
+title = "Ember Global Electricity Review 2026"
+url = "https://ember-energy.org/latest-insights/global-electricity-review-2026/"
+type = "energy"
+published = 2026
+snapshot = false
+licence = "cc-by"
+ingest = true
+
+[[source]]
+id = "25"
+file = "25-ember-electricity-data-explorer.pdf"
+title = "Ember Electricity Data Explorer"
+url = "https://ember-energy.org/data/electricity-data-explorer/"
+type = "energy"
+published = 2026
+snapshot = true
+captured = 2026-11-22
+licence = "cc-by"
+ingest = true
+
+[[source]]
+id = "26"
+file = "26-owid-energy-dataset.pdf"
+title = "Our World in Data: Energy dataset"
+url = "https://github.com/owid/energy-data"
+type = "energy"
+published = 2026
+snapshot = true
+captured = 2026-11-22
+licence = "cc-by"
+ingest = true
+
+[[source]]
+id = "27"
+file = "27-eia-gasoline-diesel-fuel-update.pdf"
+title = "EIA Gasoline and Diesel Fuel Update"
+url = "https://www.eia.gov/petroleum/gasdiesel/"
+type = "energy"
+published = 2026
+snapshot = true
+captured = 2026-11-22
+licence = "gov"
+ingest = true
+
+[[source]]
+id = "28"
+file = "28-uk-desnz-weekly-road-fuel-prices.pdf"
+title = "UK DESNZ Weekly road fuel prices"
+url = "https://www.gov.uk/government/statistics/weekly-road-fuel-prices"
+type = "energy"
+published = 2026
+snapshot = true
+captured = 2026-11-22
+licence = "gov"
+ingest = true
+
+[[source]]
+id = "29"
+file = "29-ec-weekly-oil-bulletin.pdf"
+title = "European Commission Weekly Oil Bulletin"
+url = "https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en"
+type = "energy"
+published = 2026
+snapshot = true
+captured = 2026-11-22
+licence = "open"  # reproduction allowed with credit
+ingest = true

@@ -1,0 +1,38 @@
+[project]
+name = "climate-chat"
+version = "0.1.0"
+description = "Climate Chat: factual replies to climate-sceptic comments"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.14"
+# Pinned to the versions vetted in Project/Plans/02.Ingestion.md (Phase 0).
+dependencies = [
+    "boto3==1.44.9",
+    "numpy==2.5.5",
+    "openai==3.57.0",
+    "pdfplumber==0.11.11",
+    "tiktoken==0.14.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.2.0",
+    "ruff==0.17.6",
+]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+# The Lambda placeholder is deployed by Terraform; leave Infrastructure/ untouched.
+extend-exclude = ["Infrastructure"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]

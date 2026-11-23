@@ -3,14 +3,14 @@ env            = "prod"
 create_hosting = true
 
 # Must match dev so the same ingestion code works against both.
-embedding_dimension = 4096
+embedding_dimension = 1536
 
 models = {
   classify  = "anthropic/claude-haiku-5.5"
   facts     = "anthropic/claude-haiku-5.5"
   reply     = "anthropic/claude-haiku-5.5"
   fallback  = "openai/gpt-6-luna"
-  embedding = "qwen/qwen3-embedding-8b"
+  embedding = "openai/text-embedding-3-small"
 }
 
 # Account Lambda concurrency quota is 10, so nothing can be reserved yet (AWS keeps 10
