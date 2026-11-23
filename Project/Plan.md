@@ -7,7 +7,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 | # | Plan | Status | Notes |
 |---|---|---|---|
 | 01 | [Infrastructure](Plans/01.Infra.md) | Done | Live at climate-chat.<domain>; CI applies prod on merge to main. Runbook: [Infrastructure/README.md](../Infrastructure/README.md) |
-| 02 | Ingestion (sources → `sources` index) | Not started | |
+| 02 | [Ingestion](Plans/02.Ingestion.md) | Planned | Python CLI: manifest → extract → chunk → embed → load → eval. Settles the embedding model with a 20-myth bake-off |
 | 03 | Python service (`/api/chat`) | Not started | |
 | 04 | Solid UI | Not started | |
 
@@ -38,3 +38,16 @@ Status values: Not started, Planned, In progress, Done.
 - **The CI role has no `DeleteDistribution`**, as for the website's role. CloudFront ARNs use generated IDs, so CloudFront write access can't be narrowed to this project's distribution.
 - **The `/api/*` origin request policy doesn't list `X-Amz-Content-Sha256`.** CloudFront rejects `X-Amz-*` headers in a policy, and OAC reads the viewer's payload hash itself. Found on the first prod apply.
 - **Embedding dimension starts at 4096** (Qwen3-Embedding-8B). Changing the model later replaces both indexes and needs a re-ingest.
+
+### 02. Ingestion
+
+- **A local Python CLI, not CI.** Ingestion is rare and manual. It uses your AWS credentials and the credit-capped `ingest` key. Stages write to a gitignored `build/` folder, so each can re-run on its own.
+- **One `src/climate_chat` package** with the embeddings client and vector helpers shared with the service (plan 03), so both embed and query the same way.
+- **The embedding bake-off runs in memory** (numpy cosine) before anything is loaded. The 1536-d candidate then needs no extra index. The winner is set in tfvars; if the dimension changes, the indexes are replaced while they're still empty.
+- **Winner rule:** higher recall@5 on 20 myths, with ties going to the cheaper, smaller `text-embedding-3-small`. Target recall@5 ≥ 0.8; if it's missed, tune chunking before switching models.
+- **No AGPL PDF tools** (PyMuPDF) in a public repo. `pypdf` or `pdfplumber`, chosen on four representative PDFs, with Docling as the fallback.
+- **Chunks of about 500 tokens with 80 overlap**, with page ranges. Headers, footers and reference sections are dropped. Ids are `<source_id>-<chunk_no>`, e.g. `05-0042`.
+- **Re-loads are idempotent without a state file:** list the keys for a source, write the new chunks, then delete the keys that weren't rewritten.
+- **`sources/manifest.yaml` is the machine-readable source list.** A test keeps it in step with `sources/index.md`.
+- **Non-commercial sources (#21–#23) are ingested with a filterable `licence` key.** Whether to use them at launch stays open, and can be enforced with a query filter.
+- **#10 (NASA sea level) isn't ingested** until a better data source replaces it.
