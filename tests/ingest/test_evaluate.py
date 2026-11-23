@@ -9,6 +9,7 @@ from climate_chat.ingest.evaluate import (
     Myth,
     MythResult,
     evaluate,
+    in_memory,
     load_myths,
     myths_path,
     pick_winner,
@@ -33,8 +34,7 @@ def run(myths, seconds=0.1, model="m"):
     return evaluate(
         model,
         myths,
-        IDS,
-        VECTORS,
+        in_memory(IDS, VECTORS),
         lambda q: np.array(QUERIES[q], dtype=np.float32),
         clock=lambda: next(ticks),
     )
@@ -58,11 +58,18 @@ class TestEvaluate:
         ids = [f"05-{i:04d}" for i in range(1, 7)] + ["12-0001"]
         vectors = np.array([[1, 0, 0]] * 6 + [[0, 1, 0]], dtype=np.float32)
         result = evaluate(
-            "m", [myth("warming", ["12"])], ids, vectors, lambda q: np.array([1.0, 0, 0])
+            "m", [myth("warming", ["12"])], in_memory(ids, vectors), lambda q: np.array([1.0, 0, 0])
         )
         assert result.myths[0].first_expected_rank == 7
         assert not result.myths[0].hit
         assert result.recall == 0.0
+
+    def test_top_k_search_leaves_later_ranks_unknown(self):
+        result = evaluate(
+            "m", [myth("warming", ["22"])], lambda q: ["05-0001", "05-0002"], lambda q: q
+        )
+        assert result.myths[0].first_expected_rank is None
+        assert result.myths[0].top_ids == ["05-0001", "05-0002"]
 
     def test_latency_is_measured_per_query(self):
         result = run([myth("warming", ["05"]), myth("costs", ["22"])], seconds=0.5)

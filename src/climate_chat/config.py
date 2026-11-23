@@ -11,6 +11,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 ENVS = ("dev", "prod")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -74,10 +75,19 @@ class Settings:
     model_embedding: str
     embedding_dimension: int
     ingest_openrouter_api_key: str | None
+    aws_profile: str | None = None  # from .env for local runs; the Lambda uses its role
 
     @property
     def ingest_key_param(self) -> str:
         return SSM_PARAMS["ingest_openrouter"]
+
+    def aws_client(self, service: str, **kwargs: Any) -> Any:
+        """A boto3 client in this region, using AWS_PROFILE if set (it may come from .env,
+        which boto3 doesn't read)."""
+        import boto3
+
+        session = boto3.Session(profile_name=self.aws_profile, region_name=self.region)
+        return session.client(service, **kwargs)
 
 
 def load_settings(
@@ -124,4 +134,5 @@ def load_settings(
         model_embedding=require("MODEL_EMBEDDING"),
         embedding_dimension=int(dimension),
         ingest_openrouter_api_key=get("INGEST_OPENROUTER_API_KEY"),
+        aws_profile=get("AWS_PROFILE"),
     )

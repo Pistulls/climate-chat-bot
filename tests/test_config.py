@@ -66,6 +66,10 @@ class TestLoadSettings:
         with pytest.raises(ConfigError, match="integer"):
             settings(EMBEDDING_DIMENSION="big")
 
+    def test_aws_profile_from_dotenv(self):
+        assert settings(dotenv="AWS_PROFILE=dev-admin\n").aws_profile == "dev-admin"
+        assert settings().aws_profile is None
+
     def test_ingest_key_param_is_the_ssm_name(self):
         assert settings().ingest_key_param == "/climate-chat/ingest/openrouter-api-key"
 

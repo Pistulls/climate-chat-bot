@@ -117,8 +117,6 @@ def resolve_ingest_api_key(settings: Settings, ssm_client: Any | None = None) ->
     if settings.ingest_openrouter_api_key:
         return settings.ingest_openrouter_api_key
     if ssm_client is None:
-        import boto3
-
-        ssm_client = boto3.client("ssm", region_name=settings.region)
+        ssm_client = settings.aws_client("ssm")
     response = ssm_client.get_parameter(Name=settings.ingest_key_param, WithDecryption=True)
     return response["Parameter"]["Value"]

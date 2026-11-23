@@ -5,10 +5,14 @@ Stages read and write the gitignored build/ folder, so each can be re-run on its
     extract   sources/docs/<file>.pdf  -> build/text/<id>.jsonl    one record per page
     chunk     build/text/<id>.jsonl    -> build/chunks/<id>.jsonl  ~500-token chunks
     embed     build/chunks/            -> build/embeddings/<model>/ vectors, cached by hash
-    evaluate  build/embeddings/<model>/ -> build/reports/embedding-eval.md  (--in-memory)
+    load      build/embeddings/<model>/ -> the `sources` index in S3 Vectors (--env, --dry-run)
+    evaluate  --in-memory: the cached vectors of each candidate model
+              --env dev|prod: the live index, compared with the in-memory search
 
 `embed` and `evaluate` call OpenRouter with the ingest key (INGEST_OPENROUTER_API_KEY in
-.env, else SSM). They default to both bake-off candidates; pick one with --model.
+.env, else SSM). `embed` and `evaluate --in-memory` default to both bake-off candidates;
+`load` and `evaluate --env` use MODEL_EMBEDDING. `load` and `evaluate --env` use your AWS
+credentials (AWS_PROFILE).
 """
 
 from __future__ import annotations
@@ -20,11 +24,14 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
+from botocore.exceptions import ClientError, NoCredentialsError
+
 from climate_chat.config import ConfigError, load_settings, repo_root
 from climate_chat.ingest import chunk as chunking
 from climate_chat.ingest import embed as embedding
 from climate_chat.ingest import evaluate as evaluation
 from climate_chat.ingest import extract as extraction
+from climate_chat.ingest import load as loading
 from climate_chat.ingest.manifest import (
     ManifestError,
     Source,
@@ -34,6 +41,7 @@ from climate_chat.ingest.manifest import (
     to_ingest,
 )
 from climate_chat.openrouter import CreditCapReached, EmbeddingClient, resolve_ingest_api_key
+from climate_chat.vectors import VectorIndex
 
 
 def build_dir() -> Path:
@@ -131,9 +139,70 @@ def run_embed(sources: Sequence[Source], build: Path, args: argparse.Namespace) 
     return 0
 
 
+def _winner_store(build: Path, args: argparse.Namespace):
+    settings = load_settings(args.env)
+    model = settings.model_embedding
+    store = embedding.load_store(embedding.model_dir(build, model), settings.embedding_dimension)
+    return settings, model, store
+
+
+def run_load(sources: Sequence[Source], build: Path, args: argparse.Namespace) -> int:
+    if not args.env:
+        print("load needs --env dev or --env prod", file=sys.stderr)
+        return 2
+    chunks = _read_chunks(sources, build)
+    if chunks is None:
+        return 1
+    settings, model, store = _winner_store(build, args)
+    index = VectorIndex.sources(settings)
+    if index.dimension() != settings.embedding_dimension:
+        print(
+            f"{index.bucket}/{index.index} is {index.dimension()}-d, but {model} vectors are "
+            f"{settings.embedding_dimension}-d: apply the Terraform change first",
+            file=sys.stderr,
+        )
+        return 1
+    keys = index.keys()
+    by_source = {}
+    for chunk in chunks:
+        by_source.setdefault(chunk.source_id, []).append(chunk)
+    try:
+        plans = [
+            loading.plan(s.id, loading.records(model, by_source.get(s.id, []), s, store), keys)
+            for s in sources
+        ]
+    except loading.LoadError as e:
+        print(e, file=sys.stderr)
+        return 1
+    # A full load also removes sources that are no longer ingested (e.g. ingest = false).
+    loaded = {s.id for s in sources}
+    orphans = [] if args.source else sorted(k for k in keys if k.split("-")[0] not in loaded)
+
+    action = "Would load" if args.dry_run else "Loading"
+    print(f"{action} {model} vectors into {index.bucket}/{index.index} ({len(keys)} keys now)")
+    print(f"{'id':<4}{'chunks':>7}{'new':>6}{'delete':>8}")
+    written = deleted = 0
+    for p in plans:
+        if not args.dry_run:
+            w, d = loading.apply(index, p)
+            written, deleted = written + w, deleted + d
+        print(f"{p.source_id:<4}{len(p.records):>7}{p.new:>6}{len(p.stale):>8}")
+    if orphans:
+        print(f"Not in the manifest's ingested sources: {len(orphans)} keys to delete")
+        if not args.dry_run:
+            deleted += index.delete(orphans)
+    if args.dry_run:
+        print("Dry run: nothing written")
+    else:
+        print(f"Wrote {written} vectors, deleted {deleted}; index now has {len(index.keys())} keys")
+    return 0
+
+
 def run_evaluate(sources: Sequence[Source], build: Path, args: argparse.Namespace) -> int:
+    if args.env:
+        return _evaluate_index(sources, build, args)
     if not args.in_memory:
-        print("Only --in-memory is available until the index is loaded (Phase 5)", file=sys.stderr)
+        print("evaluate needs --in-memory or --env dev|prod", file=sys.stderr)
         return 2
     chunks = _read_chunks(sources, build)
     if chunks is None:
@@ -149,7 +218,9 @@ def run_evaluate(sources: Sequence[Source], build: Path, args: argparse.Namespac
             return 1
         client.embed_query("warm-up")  # connection set-up isn't query latency
         results.append(
-            evaluation.evaluate(model, myths, store.ids(), store.vectors, client.embed_query)
+            evaluation.evaluate(
+                model, myths, evaluation.in_memory(store.ids(), store.vectors), client.embed_query
+            )
         )
     winner, reasons = evaluation.pick_winner(results)
     text = evaluation.report(results, winner, reasons)
@@ -161,7 +232,59 @@ def run_evaluate(sources: Sequence[Source], build: Path, args: argparse.Namespac
     return 0
 
 
-STAGES = {"extract": run_extract, "chunk": run_chunk, "embed": run_embed, "evaluate": run_evaluate}
+def _evaluate_index(sources: Sequence[Source], build: Path, args: argparse.Namespace) -> int:
+    """The live index should reproduce the in-memory search; a gap points to a load bug."""
+    chunks = _read_chunks(sources, build)
+    if chunks is None:
+        return 1
+    settings, model, store = _winner_store(build, args)
+    if store.ids() != sorted(c.chunk_id for c in chunks):
+        print(f"{model}: embeddings don't match the chunks; run `embed` first", file=sys.stderr)
+        return 1
+    index = VectorIndex.sources(settings)
+    client = _client(model)
+    myths = evaluation.load_myths(known_ids={s.id for s in sources})
+    client.embed_query("warm-up")
+    queries = {m.claim: client.embed_query(m.claim) for m in myths}
+    embed = queries.__getitem__
+    live = evaluation.evaluate(
+        model, myths, lambda q: [m.key for m in index.query(q, top_k=evaluation.K * 2)], embed
+    )
+    local = evaluation.evaluate(
+        model, myths, evaluation.in_memory(store.ids(), store.vectors), embed
+    )
+    same = sum(a.top_ids == b.top_ids for a, b in zip(live.myths, local.myths, strict=True))
+    overlap = sum(
+        len(set(a.top_ids) & set(b.top_ids)) for a, b in zip(live.myths, local.myths, strict=True)
+    ) / (evaluation.K * len(myths))
+    lines = [
+        f"# Index evaluation: {index.bucket}/{index.index}",
+        "",
+        f"Model `{model}`, {len(myths)} myths, topK {evaluation.K}.",
+        "",
+        "| Search | recall@5 | MRR (top 10) |",
+        "|---|---|---|",
+        f"| S3 Vectors ({settings.env}) | {live.hits}/{len(myths)} | {live.mrr:.2f} |",
+        f"| In memory (exact) | {local.hits}/{len(myths)} | {local.mrr:.2f} |",
+        "",
+        f"- Identical top 5: {same}/{len(myths)} myths; top-5 overlap {overlap:.0%}.",
+    ]
+    text = "\n".join(lines) + "\n"
+    path = build / "reports" / f"index-eval-{settings.env}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    print(text)
+    print(f"Report: {path}")
+    return 0 if live.hits == local.hits else 1
+
+
+STAGES = {
+    "extract": run_extract,
+    "chunk": run_chunk,
+    "embed": run_embed,
+    "load": run_load,
+    "evaluate": run_evaluate,
+}
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -185,6 +308,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="evaluate: search the cached vectors locally instead of the S3 Vectors index",
     )
+    parser.add_argument(
+        "--env",
+        choices=("dev", "prod"),
+        help="load/evaluate: the environment whose `sources` index to use",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="load: print what would change, write nothing"
+    )
     args = parser.parse_args(argv)
     args.model = args.model or list(embedding.CANDIDATES)
 
@@ -198,6 +329,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         return STAGES[args.stage](sources, args.build or build_dir(), args)
     except (ConfigError, evaluation.EvalError) as e:
+        print(e, file=sys.stderr)
+        return 2
+    except ClientError as e:
+        print(f"AWS error: {e}", file=sys.stderr)
+        return 1
+    except NoCredentialsError as e:
         print(e, file=sys.stderr)
         return 2
 

@@ -7,7 +7,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 | # | Plan | Status | Notes |
 |---|---|---|---|
 | 01 | [Infrastructure](Plans/01.Infra.md) | Done | Live at climate-chat.<domain>; CI applies prod on merge to main. Runbook: [Infrastructure/README.md](../Infrastructure/README.md) |
-| 02 | [Ingestion](Plans/02.Ingestion.md) | In progress | Python CLI: manifest → extract → chunk → embed → load → eval. Settles the embedding model with a 20-myth bake-off. Phases 0–4 done: 1,811 chunks; bake-off chose `text-embedding-3-small` (20/20 myths, 0.7 s p95). Dev indexes now 1536-d; prod follows on merge |
+| 02 | [Ingestion](Plans/02.Ingestion.md) | In progress | Python CLI: manifest → extract → chunk → embed → load → eval. Settles the embedding model with a 20-myth bake-off. Phases 0–4 done: 1,811 chunks; bake-off chose `text-embedding-3-small` (20/20 myths, 0.7 s p95). Phase 5 done for dev: 1,811 vectors loaded, live index matches the in-memory search (20/20). Prod load after merge |
 | 03 | Python service (`/api/chat`) | Not started | |
 | 04 | Solid UI | Not started | |
 

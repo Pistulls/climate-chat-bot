@@ -103,27 +103,40 @@ class ModelResult:
         return float(np.percentile([m.seconds for m in self.myths], percentile))
 
 
+Search = Callable[[np.ndarray], Sequence[str]]  # query vector -> chunk ids, best first
+
+
+def in_memory(chunk_ids: Sequence[str], vectors: np.ndarray) -> Search:
+    """Exact cosine search over cached vectors; ranks every chunk."""
+    matrix = normalise_rows(np.asarray(vectors, dtype=np.float32))
+    ids = list(chunk_ids)
+
+    def search(query: np.ndarray) -> list[str]:
+        scores = matrix @ normalise_rows(query[None, :])[0]
+        return [ids[i] for i in np.argsort(-scores, kind="stable")]
+
+    return search
+
+
 def evaluate(
     model: str,
     myths: Sequence[Myth],
-    chunk_ids: Sequence[str],
-    vectors: np.ndarray,
+    search: Search,
     embed_query: Callable[[str], np.ndarray],
     clock: Callable[[], float] = time.perf_counter,
 ) -> ModelResult:
-    matrix = normalise_rows(np.asarray(vectors, dtype=np.float32))
-    sources = np.array([cid.split("-")[0] for cid in chunk_ids])
+    """Embed each myth, search, and find the rank of the first chunk from an expected
+    source. A search that returns only its top k leaves later ranks unknown (None)."""
     result = ModelResult(model)
     for myth in myths:
         started = clock()
         query = embed_query(myth.claim)
         seconds = clock() - started
-        scores = matrix @ normalise_rows(query[None, :])[0]
-        order = np.argsort(-scores, kind="stable")
-        expected = np.isin(sources[order], myth.expected)
-        rank = int(np.argmax(expected)) + 1 if expected.any() else None
-        top = [chunk_ids[i] for i in order[:K]]
-        result.myths.append(MythResult(myth, top, rank, seconds))
+        ranked = list(search(query))
+        rank = next(
+            (n for n, cid in enumerate(ranked, 1) if cid.split("-")[0] in myth.expected), None
+        )
+        result.myths.append(MythResult(myth, ranked[:K], rank, seconds))
     return result
 
 
