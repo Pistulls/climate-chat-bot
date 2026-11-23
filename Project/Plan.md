@@ -7,7 +7,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 | # | Plan | Status | Notes |
 |---|---|---|---|
 | 01 | [Infrastructure](Plans/01.Infra.md) | Done | Live at climate-chat.<domain>; CI applies prod on merge to main. Runbook: [Infrastructure/README.md](../Infrastructure/README.md) |
-| 02 | [Ingestion](Plans/02.Ingestion.md) | Planned | Python CLI: manifest → extract → chunk → embed → load → eval. Settles the embedding model with a 20-myth bake-off |
+| 02 | [Ingestion](Plans/02.Ingestion.md) | In progress | Python CLI: manifest → extract → chunk → embed → load → eval. Settles the embedding model with a 20-myth bake-off. Phase 0 done: ~963k tokens, pdfplumber |
 | 03 | Python service (`/api/chat`) | Not started | |
 | 04 | Solid UI | Not started | |
 
@@ -45,9 +45,10 @@ Status values: Not started, Planned, In progress, Done.
 - **One `src/climate_chat` package** with the embeddings client and vector helpers shared with the service (plan 03), so both embed and query the same way.
 - **The embedding bake-off runs in memory** (numpy cosine) before anything is loaded. The 1536-d candidate then needs no extra index. The winner is set in tfvars; if the dimension changes, the indexes are replaced while they're still empty.
 - **Winner rule:** higher recall@5 on 20 myths, with ties going to the cheaper, smaller `text-embedding-3-small`. Target recall@5 ≥ 0.8; if it's missed, tune chunking before switching models.
-- **No AGPL PDF tools** (PyMuPDF) in a public repo. `pypdf` or `pdfplumber`, chosen on four representative PDFs, with Docling as the fallback.
+- **No AGPL PDF tools** (PyMuPDF) in a public repo.
 - **Chunks of about 500 tokens with 80 overlap**, with page ranges. Headers, footers and reference sections are dropped. Ids are `<source_id>-<chunk_no>`, e.g. `05-0042`.
 - **Re-loads are idempotent without a state file:** list the keys for a source, write the new chunks, then delete the keys that weren't rewritten.
-- **`sources/manifest.yaml` is the machine-readable source list.** A test keeps it in step with `sources/index.md`.
+- **`sources/manifest.toml` is the machine-readable source list.** A test keeps it in step with `sources/index.md`. TOML rather than YAML: PyYAML failed dependency vetting (its upstream README documents no PyPI install), and the standard library's `tomllib` needs no dependency.
+- **pdfplumber is the PDF extractor**, keeping upright characters only. pypdf turned #22 IRENA's numbers into about 20,000 glyph names, even with its `fonts` extra.
 - **Non-commercial sources (#21–#23) are ingested with a filterable `licence` key.** Whether to use them at launch stays open, and can be enforced with a query filter.
 - **#10 (NASA sea level) isn't ingested** until a better data source replaces it.
