@@ -7,7 +7,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 | # | Plan | Status | Notes |
 |---|---|---|---|
 | 01 | [Infrastructure](Plans/01.Infra.md) | Done | Live at climate-chat.<domain>; CI applies prod on merge to main. Runbook: [Infrastructure/README.md](../Infrastructure/README.md) |
-| 02 | [Ingestion](Plans/02.Ingestion.md) | In progress | Python CLI: manifest → extract → chunk → embed → load → eval. Settles the embedding model with a 20-myth bake-off. Phases 0–2 done: ~963k tokens, pdfplumber, embeddings client, source manifest |
+| 02 | [Ingestion](Plans/02.Ingestion.md) | In progress | Python CLI: manifest → extract → chunk → embed → load → eval. Settles the embedding model with a 20-myth bake-off. Phases 0–3 done: embeddings client, source manifest, 1,811 chunks (~799k tokens) in `build/` |
 | 03 | Python service (`/api/chat`) | Not started | |
 | 04 | Solid UI | Not started | |
 
@@ -53,4 +53,6 @@ Status values: Not started, Planned, In progress, Done.
 - **#10 (NASA sea level) isn't ingested** until a better data source replaces it.
 - **Every source's reuse terms are a `licence` value** (`open`, `cc-by`, `non-commercial`, `gov`, `restricted`, `unverified`), taken from the PDF's own notice or the publisher's page, never guessed. All are ingested; which ones the service may quote at launch is one open decision, enforced with a query filter. It covers the non-commercial sources (#08, #21–#23), the short-extract-only ones (#01, #05, #12) and those with no terms found (#02, #03, #06, #16). CC BY-NC counts as `non-commercial`, so one filter value covers it.
 - **Query latency is part of the embedding bake-off.** Qwen3 measured 0.6–30 s per query on OpenRouter (`text-embedding-3-small`: 0.3–0.5 s), and the service embeds every claim inside its 4–6 s budget. A model with p95 over 2 s is ruled out before recall is compared.
+- **PDF text is read column by column.** pdfplumber reads straight across a page, which interleaves two-column journals. Extraction finds the gutter itself, splitting only where at least one side is prose so tables stay whole, and uses font-relative word gaps so tightly set journals don't glue words together.
+- **Chunks that are mostly numbers are skipped** (under 20% words): unlabelled table grids and scrambled chart text can't answer a claim and would only add noise to retrieval. This removes most of #23's statistics tables.
 - **`Infrastructure/` is excluded from ruff**, so Python formatting never touches the deployed Lambda placeholder or triggers an infra CI run.
