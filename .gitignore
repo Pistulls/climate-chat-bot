@@ -240,3 +240,5 @@ crash.log
 *.local.tfvars
 # Placeholder Lambda zip built by archive_file
 Infrastructure/**/.build/
+# Secret values to push to SSM (Infrastructure/scripts/put-secrets.sh)
+*.local.env

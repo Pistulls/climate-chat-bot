@@ -56,7 +56,8 @@ terraform apply -var-file=bootstrap.local.tfvars
 
 Then the manual steps:
 
-- Set the four SSM values: `aws ssm put-parameter --name <name> --type SecureString --value "<key>" --overwrite`. The names are in `terraform output ssm_parameter_names`.
+- Set the four SSM values. Fill in `Infrastructure/secrets.local.env` (copied from `secrets.example.env`, gitignored), then run `Infrastructure/scripts/put-secrets.sh`. The script pipes each value to the CLI on stdin, so it never appears in argv or shell history. It prints only the parameter names, and skips any value still left as `<...>`.
+- Local development: copy `.env.example` to `.env` (gitignored) at the repo root and fill in the dev and ingest OpenRouter keys. The Turnstile secret there is Cloudflare's published test key, which passes every token.
 - Activate the `Project` cost allocation tag in Billing so the budget can filter on it.
 - Store the CI values:
 
