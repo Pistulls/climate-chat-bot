@@ -13,10 +13,10 @@ Working record of decisions made while fleshing out the design. Diagram: StateFl
 
 | Diagram box | Service | Name |
 |---|---|---|
-| Response Cache | S3 Vectors index; reply text in vector metadata | bucket `climate-chat-vectors`, index `response-cache` |
+| Response Cache | S3 Vectors index, keyed on the embedded **normalised claim**; the style-neutral **answer card** is stored as non-filterable metadata | bucket `climate-chat-vectors`, index `response-cache` |
 | Fact Sources | S3 Vectors index; chunk text, source number and citation URL in metadata | bucket `climate-chat-vectors`, index `sources` |
 | Log Store | DynamoDB on-demand, TTL on log items | table `climate-chat-logs` |
-| Rate limits (not in diagram yet) | DynamoDB on-demand, one counter item per IP per time window, TTL expiry | table `climate-chat-ratelimits` |
+| Rate Limits | DynamoDB on-demand, one counter item per IP per time window, TTL expiry | table `climate-chat-ratelimits` |
 
 - Compute: Lambda **outside a VPC** (no NAT Gateway). Static UI on S3 + CloudFront.
 - Avoided because of minimum charges: OpenSearch Serverless, always-on RDS/Aurora, ElastiCache, NAT Gateway.
@@ -35,7 +35,7 @@ climate-chat.<domain>  →  CloudFront
 - **UI:** plain **Solid 2 + Vite** single-page app (`solid-js` 2.0.3 and `vite-plugin-solid` 2.11.17 were current on npm on 2026-11-22). SolidStart isn't used, because its value is server rendering and server functions.
 - **One domain:** CloudFront sends `/api/*` to the Lambda function URL, so no CORS setup is needed. The function URL is locked to CloudFront with Origin Access Control (OAC), so direct calls are refused.
 - **API routes:**
-  - `POST /api/chat`: takes `{ comment, turnstile_token }` and returns `{ reply, citations, fallacy, cached }`
+  - `POST /api/chat`: takes `{ comment, turnstile_token, platform?, style? }` and returns `{ reply, citations, fallacy, cached }`. See [Two-stage reply](#two-stage-reply-facts-then-tone) for `platform` and `style`.
   - `GET /api/sources` (optional): returns the source list with links for the UI
 - **No streaming:** replies are short (~300 tokens), and Lambda's Python runtime doesn't support response streaming natively. The UI shows a typing indicator while it waits.
 
@@ -72,9 +72,10 @@ Prices are per million tokens (input / output), from OpenRouter's public model l
 
 | Role | Model | Price | Why |
 |---|---|---|---|
-| Question Guard | `anthropic/claude-haiku-5.5` | $0.10 / $0.50 | Strong instruction-following and resistance to prompt injection. A guard call is ~400 tokens in, ~50 out, so a cheaper model would save under $0.0001 per call. One model for both roles keeps prompts and testing simple. |
-| ResponseBot | `anthropic/claude-haiku-5.5` | $0.10 / $0.50 | Best quality in the low-cost tier. Supports structured outputs. |
-| Fallback (both) | `openai/gpt-6-luna` | $0.10 / $0.50 | Same price tier, different vendor, so an Anthropic outage doesn't take the bot down. |
+| Classify LLM (Question Guard) | `anthropic/claude-haiku-5.5` | $0.10 / $0.50 | Strong instruction-following and resistance to prompt injection. A classify call is ~400 tokens in, ~120 out, so a cheaper model would save under $0.0001 per call. |
+| Facts LLM | `anthropic/claude-haiku-5.5` | $0.10 / $0.50 | Best quality in the low-cost tier. Supports structured outputs. |
+| ResponseBot LLM (tone) | `anthropic/claude-haiku-5.5` | $0.10 / $0.50 | Good at matching register in short text. One model for all three roles keeps prompts and testing simple. |
+| Fallback (all three) | `openai/gpt-6-luna` | $0.10 / $0.50 | Same price tier, different vendor, so an Anthropic outage doesn't take the bot down. |
 | Embeddings | `qwen/qwen3-embedding-8b` | $0.01 | Strong retrieval quality at half the price of `openai/text-embedding-3-small` ($0.02). |
 
 **Embedding choice is provisional.** Before locking it in, embed the corpus with both Qwen3-Embedding-8B and `openai/text-embedding-3-small` (a few cents each), then test retrieval with ~20 known myths. Keep the winner.
@@ -87,28 +88,88 @@ Model IDs live in config (environment variables), not code, so they can change w
 
 | Call | Tokens (approx.) | Cost |
 |---|---|---|
-| Question embedding | 50 | ~$0.0000005 |
-| Question Guard | 400 in, 50 out | ~$0.00007 |
-| ResponseBot (cache miss only) | 2,500 in (instructions + 5 chunks), 250 out | ~$0.0004 |
-| **Total, cache miss** | | **~$0.0005** (about 2,000 replies per $1) |
-| **Total, cache hit** | | **~$0.00007** (guard + embedding only) |
+| Classify LLM | 400 in, 120 out | ~$0.0001 |
+| Claim embedding | 30 | ~$0.0000003 |
+| Facts LLM (cache miss only) | 2,500 in (instructions + 5 chunks), 400 out | ~$0.00045 |
+| ResponseBot LLM | 800 in (comment + tone + answer card), 120 out | ~$0.00014 |
+| **Total, cache miss** | 3 LLM calls, ~4–6 s | **~$0.0007** (about 1,400 replies per $1) |
+| **Total, cache hit** | 2 LLM calls, ~2–3 s | **~$0.00024** (about 4,000 replies per $1) |
 
 One-off ingestion of the 18 sources: roughly 1M tokens of embeddings, about $0.01.
 
 ### Cost and abuse controls
 
 - **A credit cap on each OpenRouter key.** Separate keys for `prod`, `dev` and `ingest`. A spent key returns HTTP 402, and the bot replies "can't answer right now".
-- Strict `max_tokens` (reply ~300, guard ~60) and low temperature.
+- Strict `max_tokens` (classify ~150, facts ~500, reply ~200) and low temperature.
 - API key stored as an SSM Parameter Store SecureString (free tier), not Secrets Manager.
 - Token usage and cost from each response's `usage` field written to `climate-chat-logs`.
 - Provider routing set to deny data collection and prefer providers that don't retain data.
 
-### Reply quality
+## Two-stage reply: facts, then tone
 
-- Fixed reply structure from the Debunking Handbook 2020: **fact → warning → fallacy → fact**.
-- Structured output: `{ reply, citations: [source_id], fallacy, cards_category, confidence }`.
-- **Citation check in code:** every cited `source_id` must be one of the retrieved chunks, or the reply is rejected.
-- The guard tags each comment with a CARDS category (Coan et al. 2021), which is also stored as cache metadata.
+Finding the facts and writing the reply are separate LLM stages. The facts are neutral and cached; the tone is applied fresh for every comment.
+
+```
+comment ─► Classify LLM ─► normalised claim + CARDS category + tone profile
+               │
+               ▼
+        embed claim ─► Response Cache ──hit──────────────┐
+               │ miss                                    │
+               ▼                                         ▼
+        Facts Search ─► Facts LLM ─► answer card ─► ResponseBot LLM ─► reply
+                                        │            (tone + style)
+                                        └─► write to cache
+```
+
+### 1. Classify LLM
+
+One call returns:
+
+- **Verdict:** is it a climate claim, and does it present a sceptical view? If not, no further LLM calls are made.
+- **`cards_category`:** the claim's category in the CARDS taxonomy (Coan et al. 2021).
+- **`claim`:** the comment restated as one neutral sentence, e.g. "Solar is pointless because it doesn't generate at night".
+- **`tone`:** register (casual / formal), hostility (none / mild / hostile), emoji and slang use, language.
+
+**The cache lookup embeds the normalised `claim`, not the raw comment.** "lol solar is useless at night 🙄" and a formal version of the same point then match the same cache entry, instead of differences in tone pushing the similarity score down.
+
+### 2. Facts LLM (cache miss only)
+
+Input: the claim plus the retrieved source chunks. Output: a style-neutral **answer card**:
+
+```json
+{ "claim": "...", "cards_category": "...", "fallacy": "...",
+  "key_points": [{ "point": "...", "source_ids": ["..."] }],
+  "bottom_line": "...", "confidence": 0.0 }
+```
+
+- Key points follow the Debunking Handbook 2020 order: **fact → warning → fallacy → fact**.
+- **Citation check in code:** every `source_id` must be one of the retrieved chunks, or the card is rejected.
+- The answer card is what goes into the cache, so one card serves every future wording of the claim.
+
+### 3. ResponseBot LLM (every reply)
+
+Input: the original comment, the tone profile, the answer card, `style` and `platform`. Output: `{ reply, source_ids }`.
+
+- **Locked to the card's facts.** The prompt forbids new claims, and two code checks enforce it:
+  - The reply's `source_ids` must be a subset of the card's.
+  - **Every number in the reply must appear in the answer card** (regex check). This catches made-up statistics.
+- **Matches register, not hostility.** A casual comment gets a casual reply; a hostile comment gets a calm, firm reply. The bot never insults or mocks the person.
+- **Length set by `platform`:** `x` ~280 characters, `youtube` / `facebook` ~500. The default is short.
+
+### Styles
+
+`style` is in the API from the start, so cached cards never need rebuilding when styles are added.
+
+| `style` | Phase |
+|---|---|
+| `match` (default): mirrors the commenter's register | Now |
+| `neutral`: plain and factual | Now |
+| `casual`: "LOL, …" | Later |
+| `sarcastic` | Later. Sarcasm targets the argument, never the person, and uses no profanity |
+
+### Speed
+
+The claim embedding starts as soon as Classify returns, and the cache lookup and Facts Search run in parallel. If the cache hits, the Facts Search result is thrown away.
 
 ## Secrets
 
@@ -147,4 +208,4 @@ Secrets Manager was not chosen. It costs $0.40 per secret per month plus API cha
 
 ## Response cache writes
 
-Generated replies are **written straight into the `response-cache` index**, with no review step. Only replies that pass the citation check are written. `confidence`, `cards_category` and the source IDs are stored as metadata, so weak entries can be found and removed later.
+**Answer cards** (not toned replies) are **written straight into the `response-cache` index**, with no review step. The vector is the embedding of the normalised claim. Only cards that pass the citation check are written. `confidence` and `cards_category` are stored as filterable metadata, so weak entries can be found and removed later.
