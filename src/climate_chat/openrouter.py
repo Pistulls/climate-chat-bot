@@ -58,13 +58,20 @@ class EmbeddingClient:
 
     @classmethod
     def from_settings(cls, settings: Settings, api_key: str, **kwargs: Any) -> EmbeddingClient:
+        return cls.for_model(
+            settings.model_embedding, settings.embedding_dimension, api_key, **kwargs
+        )
+
+    @classmethod
+    def for_model(cls, model: str, dimension: int, api_key: str, **kwargs: Any) -> EmbeddingClient:
+        """A client for any model, e.g. each candidate in the embedding bake-off."""
         client = openai.OpenAI(
             api_key=api_key,
             base_url=OPENROUTER_BASE_URL,
             max_retries=MAX_RETRIES,
             timeout=60,
         )
-        return cls(settings.model_embedding, settings.embedding_dimension, client, **kwargs)
+        return cls(model, dimension, client, **kwargs)
 
     def embed_documents(self, texts: Sequence[str]) -> np.ndarray:
         """One float32 row per text, in the same order."""

@@ -7,7 +7,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 | # | Plan | Status | Notes |
 |---|---|---|---|
 | 01 | [Infrastructure](Plans/01.Infra.md) | Done | Live at climate-chat.<domain>; CI applies prod on merge to main. Runbook: [Infrastructure/README.md](../Infrastructure/README.md) |
-| 02 | [Ingestion](Plans/02.Ingestion.md) | In progress | Python CLI: manifest → extract → chunk → embed → load → eval. Settles the embedding model with a 20-myth bake-off. Phases 0–3 done: embeddings client, source manifest, 1,811 chunks (~799k tokens) in `build/` |
+| 02 | [Ingestion](Plans/02.Ingestion.md) | In progress | Python CLI: manifest → extract → chunk → embed → load → eval. Settles the embedding model with a 20-myth bake-off. Phases 0–4 done: 1,811 chunks; bake-off chose `text-embedding-3-small` (20/20 myths, 0.7 s p95). Dev indexes now 1536-d; prod follows on merge |
 | 03 | Python service (`/api/chat`) | Not started | |
 | 04 | Solid UI | Not started | |
 
@@ -37,7 +37,7 @@ Status values: Not started, Planned, In progress, Done.
 - **CI's role ARN and state bucket are Actions secrets, not variables,** so they're masked in public logs. `mask-aws-account-id` covers the account ID in plan output. The domain is an ordinary variable because it's public anyway.
 - **The CI role has no `DeleteDistribution`**, as for the website's role. CloudFront ARNs use generated IDs, so CloudFront write access can't be narrowed to this project's distribution.
 - **The `/api/*` origin request policy doesn't list `X-Amz-Content-Sha256`.** CloudFront rejects `X-Amz-*` headers in a policy, and OAC reads the viewer's payload hash itself. Found on the first prod apply.
-- **Embedding dimension starts at 4096** (Qwen3-Embedding-8B). Changing the model later replaces both indexes and needs a re-ingest.
+- **Embedding dimension starts at 4096** (Qwen3-Embedding-8B). Changing the model later replaces both indexes and needs a re-ingest. *Superseded in plan 02: the bake-off chose `text-embedding-3-small`, 1536-d.*
 
 ### 02. Ingestion
 
@@ -55,4 +55,5 @@ Status values: Not started, Planned, In progress, Done.
 - **Query latency is part of the embedding bake-off.** Qwen3 measured 0.6–30 s per query on OpenRouter (`text-embedding-3-small`: 0.3–0.5 s), and the service embeds every claim inside its 4–6 s budget. A model with p95 over 2 s is ruled out before recall is compared.
 - **PDF text is read column by column.** pdfplumber reads straight across a page, which interleaves two-column journals. Extraction finds the gutter itself, splitting only where at least one side is prose so tables stay whole, and uses font-relative word gaps so tightly set journals don't glue words together.
 - **Chunks that are mostly numbers are skipped** (under 20% words): unlabelled table grids and scrambled chart text can't answer a claim and would only add noise to retrieval. This removes most of #23's statistics tables.
+- **The embedding model is `openai/text-embedding-3-small`.** It found all 20 myths' sources against Qwen3's 19, and Qwen3's 12 s p95 query latency on OpenRouter would break the reply budget. Chunks are embedded with their source title as a first line.
 - **`Infrastructure/` is excluded from ruff**, so Python formatting never touches the deployed Lambda placeholder or triggers an infra CI run.

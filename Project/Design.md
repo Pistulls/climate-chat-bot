@@ -76,9 +76,16 @@ Prices are per million tokens (input / output), from OpenRouter's public model l
 | Facts LLM | `anthropic/claude-haiku-5.5` | $0.10 / $0.50 | Best quality in the low-cost tier. Supports structured outputs. |
 | ResponseBot LLM (tone) | `anthropic/claude-haiku-5.5` | $0.10 / $0.50 | Good at matching register in short text. One model for all three roles keeps prompts and testing simple. |
 | Fallback (all three) | `openai/gpt-6-luna` | $0.10 / $0.50 | Same price tier, different vendor, so an Anthropic outage doesn't take the bot down. |
-| Embeddings | `qwen/qwen3-embedding-8b` | $0.01 | Strong retrieval quality at half the price of `openai/text-embedding-3-small` ($0.02). |
+| Embeddings | `openai/text-embedding-3-small` | $0.02 | Won the retrieval bake-off: all 20 test myths found their sources, with 0.4 s median query latency. |
 
-**Embedding choice is provisional.** Before locking it in, embed the corpus with both Qwen3-Embedding-8B and `openai/text-embedding-3-small` (a few cents each), then test retrieval with ~20 known myths. Keep the winner.
+**Embedding choice: settled by a bake-off** (plan 02, Phase 4). Both candidates embedded the 1,811-chunk corpus, then 20 known myths were searched against each in memory:
+
+| Model | recall@5 | MRR | Query latency p50 / p95 |
+|---|---|---|---|
+| `openai/text-embedding-3-small` (1536-d) | **20/20** | 0.94 | **0.37 s / 0.70 s** |
+| `qwen/qwen3-embedding-8b` (4096-d) | 19/20 | 0.93 | 3.68 s / 12.2 s |
+
+Qwen3 was ruled out on latency alone: the service embeds every incoming claim inside its 4–6 s reply budget, and its p95 on OpenRouter was over 12 s. Retrieval quality was effectively equal. The smaller vectors also make each S3 Vectors query about 2.7× cheaper, which outweighs the $0.01 per million tokens Qwen3 saves.
 
 Embeddings cannot use a fallback model. Both indexes must be built and queried with the same model, and changing it means re-embedding everything (cheap at this corpus size).
 
