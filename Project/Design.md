@@ -102,7 +102,7 @@ Model IDs live in config (environment variables), not code, so they can change w
 | **Total, cache miss** | 3 LLM calls, ~4–6 s | **~$0.0007** (about 1,400 replies per $1) |
 | **Total, cache hit** | 2 LLM calls, ~2–3 s | **~$0.00024** (about 4,000 replies per $1) |
 
-One-off ingestion of the 18 sources: roughly 1M tokens of embeddings, about $0.01.
+One-off ingestion, measured in plan 02: 28 sources, 1,811 chunks, 823k tokens of `text-embedding-3-small` embeddings, about $0.02. Re-ingesting a changed source costs a fraction of a cent, since unchanged chunks come from the cache.
 
 ### Cost and abuse controls
 

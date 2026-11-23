@@ -6,13 +6,13 @@ Stages read and write the gitignored build/ folder, so each can be re-run on its
     chunk     build/text/<id>.jsonl    -> build/chunks/<id>.jsonl  ~500-token chunks
     embed     build/chunks/            -> build/embeddings/<model>/ vectors, cached by hash
     load      build/embeddings/<model>/ -> the `sources` index in S3 Vectors (--env, --dry-run)
-    evaluate  --in-memory: the cached vectors of each candidate model
+    evaluate  --in-memory: the cached vectors, searched locally (the model bake-off)
               --env dev|prod: the live index, compared with the in-memory search
 
+All embedding uses MODEL_EMBEDDING from .env. `embed` and `evaluate --in-memory` take
+--model (repeatable) to compare candidates instead, as the plan 02 bake-off did.
 `embed` and `evaluate` call OpenRouter with the ingest key (INGEST_OPENROUTER_API_KEY in
-.env, else SSM). `embed` and `evaluate --in-memory` default to both bake-off candidates;
-`load` and `evaluate --env` use MODEL_EMBEDDING. `load` and `evaluate --env` use your AWS
-credentials (AWS_PROFILE).
+.env, else SSM). `load` and `evaluate --env` use your AWS credentials (AWS_PROFILE).
 """
 
 from __future__ import annotations
@@ -24,7 +24,12 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import (
+    ClientError,
+    NoCredentialsError,
+    SSOTokenLoadError,
+    TokenRetrievalError,
+)
 
 from climate_chat.config import ConfigError, load_settings, repo_root
 from climate_chat.ingest import chunk as chunking
@@ -288,7 +293,11 @@ STAGES = {
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m climate_chat.ingest", description=__doc__)
+    parser = argparse.ArgumentParser(
+        prog="python -m climate_chat.ingest",
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("stage", choices=STAGES)
     parser.add_argument(
         "--source",
@@ -301,7 +310,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--model",
         action="append",
         choices=embedding.CANDIDATES,
-        help="embed/evaluate: this model only (repeatable; default: both candidates)",
+        help="embed/evaluate --in-memory: use this model (repeatable; default: MODEL_EMBEDDING)",
     )
     parser.add_argument(
         "--in-memory",
@@ -317,7 +326,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--dry-run", action="store_true", help="load: print what would change, write nothing"
     )
     args = parser.parse_args(argv)
-    args.model = args.model or list(embedding.CANDIDATES)
 
     # pdfminer logs every malformed font descriptor; the text is still extracted.
     logging.getLogger("pdfminer").setLevel(logging.ERROR)
@@ -327,6 +335,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(e, file=sys.stderr)
         return 2
     try:
+        if args.model is None and args.stage in ("embed", "evaluate"):
+            configured = load_settings(args.env).model_embedding
+            if configured not in embedding.CANDIDATES:
+                print(f"MODEL_EMBEDDING {configured!r} isn't a known model", file=sys.stderr)
+                return 2
+            args.model = [configured]
         return STAGES[args.stage](sources, args.build or build_dir(), args)
     except (ConfigError, evaluation.EvalError) as e:
         print(e, file=sys.stderr)
@@ -334,8 +348,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ClientError as e:
         print(f"AWS error: {e}", file=sys.stderr)
         return 1
-    except NoCredentialsError as e:
-        print(e, file=sys.stderr)
+    except (NoCredentialsError, SSOTokenLoadError, TokenRetrievalError) as e:
+        print(
+            f"{e}\nSign in first: aws sso login (with the profile in AWS_PROFILE)", file=sys.stderr
+        )
         return 2
 
 
