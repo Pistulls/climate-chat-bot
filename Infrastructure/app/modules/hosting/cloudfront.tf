@@ -37,7 +37,9 @@ resource "aws_cloudfront_origin_access_control" "api" {
 
 # A named list rather than the managed AllViewerExceptHostHeader policy: that one
 # doesn't forward CloudFront-* headers, and the rate limiter needs the viewer's IP.
-# Host is never forwarded (the function URL rejects a foreign Host).
+# Host is never forwarded (the function URL rejects a foreign Host). X-Amz-* headers
+# can't be listed here (CloudFront rejects them); OAC reads the viewer's
+# x-amz-content-sha256 itself when it signs the origin request.
 resource "aws_cloudfront_origin_request_policy" "api" {
   name    = "${var.name_prefix}-api"
   comment = "Headers the API needs, plus the viewer's IP"
@@ -49,7 +51,6 @@ resource "aws_cloudfront_origin_request_policy" "api" {
         "Accept",
         "Content-Type",
         "Origin",
-        "X-Amz-Content-Sha256",
         "CloudFront-Viewer-Address",
         "CloudFront-Viewer-Country",
       ]

@@ -6,7 +6,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 
 | # | Plan | Status | Notes |
 |---|---|---|---|
-| 01 | [Infrastructure](Plans/01.Infra.md) | In progress | Bootstrap applied and delegated, cert issued. Next: activate the cost tag, set secrets, CI values, then dev and prod apply. Runbook: [Infrastructure/README.md](../Infrastructure/README.md) |
+| 01 | [Infrastructure](Plans/01.Infra.md) | In progress | Bootstrap, dev and prod applied; end-to-end checks pass. Left: merge to main so CI applies prod, then a cost check after a week. Runbook: [Infrastructure/README.md](../Infrastructure/README.md) |
 | 02 | Ingestion (sources → `sources` index) | Not started | |
 | 03 | Python service (`/api/chat`) | Not started | |
 | 04 | Solid UI | Not started | |
@@ -36,4 +36,5 @@ Status values: Not started, Planned, In progress, Done.
 - **The `/api/*` origin request policy is a header allow-list**, not the managed `AllViewerExceptHostHeader`. The managed policy doesn't forward `CloudFront-Viewer-Address`.
 - **CI's role ARN and state bucket are Actions secrets, not variables,** so they're masked in public logs. `mask-aws-account-id` covers the account ID in plan output. The domain is an ordinary variable because it's public anyway.
 - **The CI role has no `DeleteDistribution`**, as for the website's role. CloudFront ARNs use generated IDs, so CloudFront write access can't be narrowed to this project's distribution.
+- **The `/api/*` origin request policy doesn't list `X-Amz-Content-Sha256`.** CloudFront rejects `X-Amz-*` headers in a policy, and OAC reads the viewer's payload hash itself. Found on the first prod apply.
 - **Embedding dimension starts at 4096** (Qwen3-Embedding-8B). Changing the model later replaces both indexes and needs a re-ingest.
