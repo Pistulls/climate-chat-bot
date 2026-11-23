@@ -227,3 +227,16 @@ __marimo__/
 
 # Source PDFs: downloaded locally, too large and not all redistributable
 sources/docs/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan
+*.tfplan
+crash.log
+# Personal/account values for this public repo: backend config and tfvars
+*.local.hcl
+*.local.tfvars
+# Placeholder Lambda zip built by archive_file
+Infrastructure/**/.build/

@@ -1,0 +1,93 @@
+name: Infrastructure
+
+on:
+  pull_request:
+    paths:
+      - "Infrastructure/**"
+      - ".github/workflows/infra.yml"
+  push:
+    branches: [main]
+    paths:
+      - "Infrastructure/app/**"
+      - ".github/workflows/infra.yml"
+  workflow_dispatch: {}
+
+# Least privilege for GITHUB_TOKEN; id-token lets the job request the OIDC token.
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: 1.16.5 # match local so the lock file and state agree
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  # PRs can't assume the deploy role (it trusts main only), so they only check syntax.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Format
+        run: terraform fmt -check -recursive Infrastructure
+
+      - name: Validate bootstrap
+        working-directory: Infrastructure/bootstrap
+        run: terraform init -backend=false -input=false && terraform validate
+
+      - name: Validate app
+        working-directory: Infrastructure/app
+        run: terraform init -backend=false -input=false && terraform validate
+
+  apply-prod:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # No `environment:` key: it would change the token's sub and the role would refuse it.
+    concurrency:
+      group: infra-prod
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: Infrastructure/app
+    env:
+      TF_VAR_domain_name: ${{ vars.DOMAIN_NAME }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Public repo, public logs: the role ARN and state bucket are secrets (so masked),
+      # and the account ID is masked wherever it appears in plan output.
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-2
+          mask-aws-account-id: true
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Write backend config
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+        run: |
+          cat > backend.prod.local.hcl <<EOF
+          bucket       = "${TF_STATE_BUCKET}"
+          key          = "climate-chat/prod/terraform.tfstate"
+          region       = "eu-west-2"
+          encrypt      = true
+          use_lockfile = true
+          EOF
+
+      - name: Terraform init
+        run: terraform init -input=false -backend-config=backend.prod.local.hcl
+
+      - name: Terraform plan
+        run: terraform plan -input=false -var-file=envs/prod.tfvars -out=tfplan
+
+      - name: Terraform apply
+        run: terraform apply -input=false tfplan # applies exactly the plan above

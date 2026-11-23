@@ -6,7 +6,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 
 | # | Plan | Status | Notes |
 |---|---|---|---|
-| 01 | [Infrastructure](Plans/01.Infra.md) | Planned | Terraform for AWS: hosted zone, cert, data stores, Lambda, CloudFront, SSM, CI role |
+| 01 | [Infrastructure](Plans/01.Infra.md) | In progress | Bootstrap applied and delegated, cert issued. Next: activate the cost tag, set secrets, CI values, then dev and prod apply. Runbook: [Infrastructure/README.md](../Infrastructure/README.md) |
 | 02 | Ingestion (sources → `sources` index) | Not started | |
 | 03 | Python service (`/api/chat`) | Not started | |
 | 04 | Solid UI | Not started | |
@@ -30,3 +30,10 @@ Status values: Not started, Planned, In progress, Done.
 - **Terraform owns configuration, not code or content.** The Lambda and UI start with placeholders, and `ignore_changes` hands code and content to their own deploy workflows.
 - **A $5/month AWS Budget alarm** on the `Project = climate-chat` tag. It's free and backs up the OpenRouter credit caps.
 - **14-day log retention, PITR off, and deletion protection on prod tables.** The data can be rebuilt, so backups aren't worth the cost.
+- **Prod-only resources live in a `modules/hosting` module behind `create_hosting`.** This keeps `[0]` indexing out of every resource, and dev stays data stores only.
+- **No reserved Lambda concurrency for now.** The account quota is 10 and AWS keeps 10 unreserved. Raise the quota, then set `lambda.concurrency`.
+- **Lambda runtime `python3.14` on `arm64`**, and AWS provider pinned to `~> 6.73` for the S3 Vectors resources.
+- **The `/api/*` origin request policy is a header allow-list**, not the managed `AllViewerExceptHostHeader`. The managed policy doesn't forward `CloudFront-Viewer-Address`.
+- **CI's role ARN and state bucket are Actions secrets, not variables,** so they're masked in public logs. `mask-aws-account-id` covers the account ID in plan output. The domain is an ordinary variable because it's public anyway.
+- **The CI role has no `DeleteDistribution`**, as for the website's role. CloudFront ARNs use generated IDs, so CloudFront write access can't be narrowed to this project's distribution.
+- **Embedding dimension starts at 4096** (Qwen3-Embedding-8B). Changing the model later replaces both indexes and needs a re-ingest.
