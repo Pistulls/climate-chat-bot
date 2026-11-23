@@ -224,3 +224,6 @@ __marimo__/
 
 # JetBrains IDE settings
 .idea/
+
+# Source PDFs: downloaded locally, too large and not all redistributable
+sources/docs/
