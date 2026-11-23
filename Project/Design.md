@@ -1,0 +1,211 @@
+# Climate Bot: design decisions
+
+![ClimateBotDesign2.png](ClimateBotDesign2.png)
+
+Working record of decisions made while fleshing out the design. Diagram: StateFlow FigJam board, "Climate Bot v2: Data Stores".
+
+## Principles
+
+- **Pay per use, no minimum charges.** Every service must cost (close to) nothing when idle.
+- **Own repo, own infra.** This project has its own Terraform state and its own Route 53 hosted zone for `climate-chat.<domain>`. The website repo only adds the NS delegation record.
+
+## Data stores
+
+| Diagram box | Service | Name |
+|---|---|---|
+| Response Cache | S3 Vectors index, keyed on the embedded **normalised claim**; the style-neutral **answer card** is stored as non-filterable metadata | bucket `climate-chat-vectors`, index `response-cache` |
+| Fact Sources | S3 Vectors index; chunk text, source number and citation URL in metadata | bucket `climate-chat-vectors`, index `sources` |
+| Log Store | DynamoDB on-demand, TTL on log items | table `climate-chat-logs` |
+| Rate Limits | DynamoDB on-demand, one counter item per IP per time window, TTL expiry | table `climate-chat-ratelimits` |
+
+- Compute: Lambda **outside a VPC** (no NAT Gateway). Static UI on S3 + CloudFront.
+- Avoided because of minimum charges: OpenSearch Serverless, always-on RDS/Aurora, ElastiCache, NAT Gateway.
+- Expected idle cost: about $1–2/month, mostly the Route 53 hosted zone.
+
+## Front end and API
+
+**No separate backend for the front end (no BFF).** The UI talks directly to the Python service. A BFF would only pay off with user logins, several backends to combine, server-side rendering for SEO, or secrets to keep out of the browser, and none of those apply here.
+
+```
+climate-chat.<domain>  →  CloudFront
+                           ├─ /*      → S3 (static Solid single-page app)
+                           └─ /api/*  → Lambda function URL (Python service)
+```
+
+- **UI:** plain **Solid 2 + Vite** single-page app (`solid-js` 2.0.3 and `vite-plugin-solid` 2.11.17 were current on npm on 2026-11-22). SolidStart isn't used, because its value is server rendering and server functions.
+- **One domain:** CloudFront sends `/api/*` to the Lambda function URL, so no CORS setup is needed. The function URL is locked to CloudFront with Origin Access Control (OAC), so direct calls are refused.
+- **API routes:**
+  - `POST /api/chat`: takes `{ comment, turnstile_token, platform?, style? }` and returns `{ reply, citations, fallacy, cached }`. See [Two-stage reply](#two-stage-reply-facts-then-tone) for `platform` and `style`.
+  - `GET /api/sources` (optional): returns the source list with links for the UI
+- **No streaming:** replies are short (~300 tokens), and Lambda's Python runtime doesn't support response streaming natively. The UI shows a typing indicator while it waits.
+
+### Abuse protection for the anonymous endpoint
+
+Anyone can call `/api/chat`, and every cache miss costs money. Protection is layered, and almost all of it is free:
+
+1. **Cloudflare Turnstile check** (planned, free): see below.
+2. **Per-IP rate limit** in the Python service, using counters in the `climate-chat-ratelimits` table (e.g. 10 requests/minute, 100/day). Each counter item expires via TTL.
+3. **Comment length cap** (~1,000 characters), checked before any LLM call.
+4. **Lambda reserved concurrency** to cap how many requests run at once.
+5. **OpenRouter key credit cap** as the hard limit on spending.
+
+AWS WAF with CAPTCHA was considered and not chosen: it costs at least $5/month and Turnstile does the same job for free.
+
+### Cloudflare Turnstile
+
+Turnstile is Cloudflare's free bot check. It works on any site, so the domain doesn't need to be on Cloudflare DNS.
+
+1. The Solid app renders the Turnstile widget in **managed mode**, so most people never see a challenge. The widget uses the public **site key**, which is baked into the UI build.
+2. Each `POST /api/chat` sends the widget's token with the comment: `{ comment, turnstile_token }`.
+3. The Python service verifies the token with Cloudflare's `siteverify` endpoint, using the private **secret key**, **before** the rate limit, the cache lookup or any LLM call. A missing or failed token returns HTTP 403.
+4. Tokens are single-use and expire after 5 minutes, so the UI requests a fresh token for each message.
+
+The secret key is stored like the OpenRouter keys (see Secrets).
+
+## LLM (OpenRouter)
+
+All model calls go through OpenRouter's OpenAI-compatible API (`https://openrouter.ai/api/v1`), using the OpenAI Python SDK.
+
+### Models
+
+Prices are per million tokens (input / output), from OpenRouter's public model list on 2026-11-22.
+
+| Role | Model | Price | Why |
+|---|---|---|---|
+| Classify LLM (Question Guard) | `anthropic/claude-haiku-5.5` | $0.10 / $0.50 | Strong instruction-following and resistance to prompt injection. A classify call is ~400 tokens in, ~120 out, so a cheaper model would save under $0.0001 per call. |
+| Facts LLM | `anthropic/claude-haiku-5.5` | $0.10 / $0.50 | Best quality in the low-cost tier. Supports structured outputs. |
+| ResponseBot LLM (tone) | `anthropic/claude-haiku-5.5` | $0.10 / $0.50 | Good at matching register in short text. One model for all three roles keeps prompts and testing simple. |
+| Fallback (all three) | `openai/gpt-6-luna` | $0.10 / $0.50 | Same price tier, different vendor, so an Anthropic outage doesn't take the bot down. |
+| Embeddings | `qwen/qwen3-embedding-8b` | $0.01 | Strong retrieval quality at half the price of `openai/text-embedding-3-small` ($0.02). |
+
+**Embedding choice is provisional.** Before locking it in, embed the corpus with both Qwen3-Embedding-8B and `openai/text-embedding-3-small` (a few cents each), then test retrieval with ~20 known myths. Keep the winner.
+
+Embeddings cannot use a fallback model. Both indexes must be built and queried with the same model, and changing it means re-embedding everything (cheap at this corpus size).
+
+Model IDs live in config (environment variables), not code, so they can change without a deploy. The fallback goes in OpenRouter's `models` list on each request.
+
+### Expected cost per reply
+
+| Call | Tokens (approx.) | Cost |
+|---|---|---|
+| Classify LLM | 400 in, 120 out | ~$0.0001 |
+| Claim embedding | 30 | ~$0.0000003 |
+| Facts LLM (cache miss only) | 2,500 in (instructions + 5 chunks), 400 out | ~$0.00045 |
+| ResponseBot LLM | 800 in (comment + tone + answer card), 120 out | ~$0.00014 |
+| **Total, cache miss** | 3 LLM calls, ~4–6 s | **~$0.0007** (about 1,400 replies per $1) |
+| **Total, cache hit** | 2 LLM calls, ~2–3 s | **~$0.00024** (about 4,000 replies per $1) |
+
+One-off ingestion of the 18 sources: roughly 1M tokens of embeddings, about $0.01.
+
+### Cost and abuse controls
+
+- **A credit cap on each OpenRouter key.** Separate keys for `prod`, `dev` and `ingest`. A spent key returns HTTP 402, and the bot replies "can't answer right now".
+- Strict `max_tokens` (classify ~150, facts ~500, reply ~200) and low temperature.
+- API key stored as an SSM Parameter Store SecureString (free tier), not Secrets Manager.
+- Token usage and cost from each response's `usage` field written to `climate-chat-logs`.
+- Provider routing set to deny data collection and prefer providers that don't retain data.
+
+## Two-stage reply: facts, then tone
+
+Finding the facts and writing the reply are separate LLM stages. The facts are neutral and cached; the tone is applied fresh for every comment.
+
+```
+comment ─► Classify LLM ─► normalised claim + CARDS category + tone profile
+               │
+               ▼
+        embed claim ─► Response Cache ──hit──────────────┐
+               │ miss                                    │
+               ▼                                         ▼
+        Facts Search ─► Facts LLM ─► answer card ─► ResponseBot LLM ─► reply
+                                        │            (tone + style)
+                                        └─► write to cache
+```
+
+### 1. Classify LLM
+
+One call returns:
+
+- **Verdict:** is it a climate claim, and does it present a sceptical view? If not, no further LLM calls are made.
+- **`cards_category`:** the claim's category in the CARDS taxonomy (Coan et al. 2021).
+- **`claim`:** the comment restated as one neutral sentence, e.g. "Solar is pointless because it doesn't generate at night".
+- **`tone`:** register (casual / formal), hostility (none / mild / hostile), emoji and slang use, language.
+
+**The cache lookup embeds the normalised `claim`, not the raw comment.** "lol solar is useless at night 🙄" and a formal version of the same point then match the same cache entry, instead of differences in tone pushing the similarity score down.
+
+### 2. Facts LLM (cache miss only)
+
+Input: the claim plus the retrieved source chunks. Output: a style-neutral **answer card**:
+
+```json
+{ "claim": "...", "cards_category": "...", "fallacy": "...",
+  "key_points": [{ "point": "...", "source_ids": ["..."] }],
+  "bottom_line": "...", "confidence": 0.0 }
+```
+
+- Key points follow the Debunking Handbook 2020 order: **fact → warning → fallacy → fact**.
+- **Citation check in code:** every `source_id` must be one of the retrieved chunks, or the card is rejected.
+- The answer card is what goes into the cache, so one card serves every future wording of the claim.
+
+### 3. ResponseBot LLM (every reply)
+
+Input: the original comment, the tone profile, the answer card, `style` and `platform`. Output: `{ reply, source_ids }`.
+
+- **Locked to the card's facts.** The prompt forbids new claims, and two code checks enforce it:
+  - The reply's `source_ids` must be a subset of the card's.
+  - **Every number in the reply must appear in the answer card** (regex check). This catches made-up statistics.
+- **Matches register, not hostility.** A casual comment gets a casual reply; a hostile comment gets a calm, firm reply. The bot never insults or mocks the person.
+- **Length set by `platform`:** `x` ~280 characters, `youtube` / `facebook` ~500. The default is short.
+
+### Styles
+
+`style` is in the API from the start, so cached cards never need rebuilding when styles are added.
+
+| `style` | Phase |
+|---|---|
+| `match` (default): mirrors the commenter's register | Now |
+| `neutral`: plain and factual | Now |
+| `casual`: "LOL, …" | Later |
+| `sarcastic` | Later. Sarcasm targets the argument, never the person, and uses no profanity |
+
+### Speed
+
+The claim embedding starts as soon as Classify returns, and the cache lookup and Facts Search run in parallel. If the cache hits, the Facts Search result is thrown away.
+
+## Secrets
+
+The secrets are the **OpenRouter API keys** (`prod`, `dev`, `ingest`) and the **Cloudflare Turnstile secret key**. The Turnstile site key is public and lives in the UI build. The Python service reaches S3 Vectors and DynamoDB through its Lambda IAM role, so no AWS keys are stored anywhere.
+
+### Where they live
+
+**SSM Parameter Store, SecureString, standard tier.** Storage and normal API calls are free, and encryption uses the free AWS-managed `aws/ssm` key.
+
+Secrets Manager was not chosen. It costs $0.40 per secret per month plus API charges, and its main extra, automatic rotation, can't be used with OpenRouter keys.
+
+| Parameter | Used by |
+|---|---|
+| `/climate-chat/prod/openrouter-api-key` | Python service (Lambda) |
+| `/climate-chat/dev/openrouter-api-key` | Shared dev copy. Local development reads the key from a gitignored `.env` |
+| `/climate-chat/prod/turnstile-secret-key` | Python service (Lambda) |
+| `/climate-chat/ingest/openrouter-api-key` | Ingestion script, using your own AWS credentials (or a GitHub Actions OIDC role if run in CI) |
+
+### Rules
+
+1. **Terraform creates the parameter, never the value.** Values in Terraform end up in plain text in the state file. Each parameter is created with a placeholder and `lifecycle { ignore_changes = [value] }`. The real value is set once, outside Terraform:
+
+   ```bash
+   aws ssm put-parameter --name /climate-chat/prod/openrouter-api-key --type SecureString --value "<key>" --overwrite
+   ```
+
+2. **No secrets in Lambda environment variables.** They are visible in the console and in Terraform state. The service reads the key with boto3 (`get_parameter`, `WithDecryption=True`) when it starts, and caches it in memory for about 5 minutes.
+3. **Least-privilege IAM.** The Lambda role gets `ssm:GetParameter` on the two prod parameters' ARNs only, plus `kms:Decrypt` on the `aws/ssm` key.
+
+### Rotating a key and limiting damage
+
+- **To rotate:** create a new key in OpenRouter, overwrite the parameter, and revoke the old key. The service picks up the new key within the 5-minute cache window, with no deploy.
+- **If a key leaks:** each key's OpenRouter credit cap limits the most it can cost. Separate keys mean a leaked dev or ingest key doesn't affect prod.
+
+**Cost: $0.**
+
+## Response cache writes
+
+**Answer cards** (not toned replies) are **written straight into the `response-cache` index**, with no review step. The vector is the embedding of the normalised claim. Only cards that pass the citation check are written. `confidence` and `cards_category` are stored as filterable metadata, so weak entries can be found and removed later.

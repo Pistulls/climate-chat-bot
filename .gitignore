@@ -221,3 +221,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# JetBrains IDE settings
+.idea/
+
+# Source PDFs: downloaded locally, too large and not all redistributable
+sources/docs/
