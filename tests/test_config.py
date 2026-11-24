@@ -174,3 +174,16 @@ def test_tuned_max_tokens_defaults():
     from climate_chat.config import DEFAULT_MAX_TOKENS
 
     assert DEFAULT_MAX_TOKENS == {"classify": 200, "facts": 1000, "reply": 300}
+
+
+def test_no_repo_root_means_no_dotenv(monkeypatch):
+    """In the Lambda there's no pyproject.toml above the code: settings come from the
+    environment only."""
+    import climate_chat.config as config
+
+    def no_root(start=None):
+        raise ConfigError("No pyproject.toml above /var/task")
+
+    monkeypatch.setattr(config, "repo_root", no_root)
+    s = config.load_service_settings(environ=SERVICE)
+    assert s.logs_table == "climate-chat-dev-logs"
