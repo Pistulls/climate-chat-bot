@@ -102,3 +102,89 @@ when the extraction or chunking code changes.
 if the dimension changes. Compare candidates first with `embed --model <id>` and
 `evaluate --in-memory --model <a> --model <b>`, then follow plan 02's step 4.4 and the
 Terraform notes in [Infrastructure/README.md](Infrastructure/README.md).
+
+## Service
+
+The `/api/chat` service turns a climate-sceptic comment into a short, cited reply. It runs
+as a Lambda behind CloudFront at `https://climate-chat.<domain>/api/chat`. How it behaves is
+in [Project/Design.md](Project/Design.md); the plan and its results are in
+[Project/Plans/03.Service.md](Project/Plans/03.Service.md).
+
+### Local setup
+
+1. `uv sync`, then copy `.env.example` to `.env` (see Ingestion above). The service also
+   needs `OPENROUTER_API_KEY` (the credit-capped dev key) and `LOG_HASH_KEY` (any long
+   random string, e.g. `openssl rand -hex 32`). `TURNSTILE_SECRET_KEY` is already
+   Cloudflare's always-pass test secret, so any token works locally.
+2. `aws sso login`. Locally the service uses the dev data stores: the `sources` and
+   `response-cache` indexes and the `logs` and `ratelimits` tables.
+
+### Running it
+
+```bash
+uv run python -m climate_chat.service.local            # http://127.0.0.1:8000/api/chat
+curl -s localhost:8000/api/chat \
+  -d '{"comment":"Solar is useless at night","turnstile_token":"XXXX.DUMMY.TOKEN.XXXX","platform":"x"}'
+```
+
+The body is `{ comment, turnstile_token, platform?, style? }` and the reply is
+`{ reply, citations, fallacy, cached }`. `platform` is `x`, `youtube` or `facebook`;
+`style` is `match` (the default) or `neutral`. Error codes are listed in Design.md.
+
+### Tests and evaluation
+
+| Command | What it does | Cost |
+|---|---|---|
+| `uv run pytest` | Unit tests; no network | Free |
+| `uv run pytest -m live` | The 20 myths in `eval/retrieval_myths.toml` through the service's own search, against dev | Under $0.001 |
+| `uv run python -m climate_chat.service.evaluate [--runs 2]` | The comments in `eval/replies.toml`, end to end against dev, written to `build/reports/replies.md` to read by hand | About $0.01 per run |
+
+The evaluation writes answer cards into the dev `response-cache`. To test prompt changes
+from scratch, empty that index first; cache hits skip the Facts call.
+
+### Deploying
+
+Merging to `main` deploys, through `.github/workflows/service.yml`:
+
+1. `test`: ruff and `pytest` (also on every pull request).
+2. `package`, on a Linux arm64 runner: `scripts/build_lambda.sh` builds
+   `build/lambda/climate-chat-api.zip` (runtime dependencies only, no `ingest/`), and the
+   handler is imported from the unzipped package. On `main` it then runs
+   `update-function-code` on `climate-chat-prod-api`. Finally it checks that a POST with
+   no Turnstile token gets `403 turnstile_failed` through CloudFront.
+
+Every POST needs an `x-amz-content-sha256` header holding the hex SHA-256 of the body,
+because CloudFront's origin access control signs the request with it (see
+[Infrastructure/README.md](Infrastructure/README.md)). Model ids and tuned values
+(`MAX_TOKENS_*`, `CACHE_MAX_DISTANCE`, `EXCLUDED_LICENCES`) are Lambda environment
+variables set by Terraform (`Infrastructure/app/variables.tf`, `service`), so changing
+them is an infrastructure change, not a code deploy.
+
+### Smoke test (prod)
+
+Real Turnstile tokens only come from the widget, so the full pipeline in prod is tested
+with a direct invoke. The function URL only accepts CloudFront, so only IAM principals
+can do this:
+
+```bash
+aws lambda invoke --function-name climate-chat-prod-api --cli-binary-format raw-in-base64-out \
+  --payload '{"smoke":"Solar is useless because it does not work at night"}' /dev/stdout
+```
+
+It returns the same JSON as the API and is logged with `user_hash = "smoke"`.
+
+### Reading the logs
+
+Each request is one item in `climate-chat-<env>-logs`, with `pk = day#YYYY-MM-DD` and
+`sk = <time>#<request id>`. An item holds the comment, claim, outcome, cache hit, latency,
+and each model call's tokens and cost. A failed model output adds a `failures` list with
+the problems found. No IP is stored. To see whether a few users make most of the requests
+on a day, count items by `user_hash` (a monthly keyed hash of the IP):
+
+```bash
+aws dynamodb query --table-name climate-chat-prod-logs \
+  --key-condition-expression "pk = :d" --expression-attribute-values '{":d":{"S":"day#2026-11-24"}}' \
+  --query "Items[].user_hash.S" --output text | tr '\t' '\n' | sort | uniq -c | sort -rn | head
+```
+
+Errors with stack traces are in CloudWatch Logs, `/aws/lambda/climate-chat-prod-api`.

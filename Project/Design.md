@@ -111,16 +111,23 @@ Model IDs live in config (environment variables), not code, so they can change w
 
 **No `temperature`.** Neither Haiku 5.5 nor the fallback supports it: with `require_parameters` a request that sets it finds no provider (HTTP 404), and without it OpenRouter silently drops it.
 
-### Expected cost per reply
+### Cost and latency per reply
 
-| Call | Tokens (approx.) | Cost |
+Measured in plan 03 (prod logs and the dev reply evaluation, 2026-11-24), with reasoning off. Costs are OpenRouter's `usage.cost`.
+
+| Call | Tokens in / out (measured) | Cost (measured) |
 |---|---|---|
-| Classify LLM | 400 in, 120 out | ~$0.0001 |
-| Claim embedding | 30 | ~$0.0000003 |
-| Facts LLM (cache miss only) | 2,500 in (instructions + 5 chunks), 400 out | ~$0.00045 |
-| ResponseBot LLM | 800 in (comment + tone + answer card), 120 out | ~$0.00014 |
-| **Total, cache miss** | 3 LLM calls, ~4–6 s | **~$0.0007** (about 1,400 replies per $1) |
-| **Total, cache hit** | 2 LLM calls, ~2–3 s | **~$0.00024** (about 4,000 replies per $1) |
+| Classify LLM | ~970 in (instructions + comment), ~105 out | ~$0.00015 |
+| Claim embedding | ~15 | under $0.000001 |
+| Facts LLM (cache miss only) | ~4,500 in (instructions + 5 chunks), 390–610 out | ~$0.00065 |
+| ResponseBot LLM | ~1,000–1,200 in (comment + tone + answer card), 120–200 out | ~$0.00017 |
+| **Total, cache miss** | 3 LLM calls, **5–8.6 s** | **~$0.0010** (about 1,000 replies per $1) |
+| **Total, cache hit** | 2 LLM calls, **2.3–4.4 s** | **~$0.0003** (about 3,000 replies per $1) |
+
+- **About 40% more per reply than first estimated** (~$0.0007 per miss, ~$0.00024 per hit). The prompts are longer than assumed: Classify carries the CARDS and tone instructions, and Facts carries five ~500-token chunks.
+- **A cache miss is slower than the 4–6 s target**, mostly the Facts call. It's well within the Lambda's 30 s timeout and CloudFront's 30 s origin timeout. The UI shows a typing indicator while it waits.
+- **A retried call adds its cost again**: a failed check retries once, so the worst case for a miss is about $0.0017.
+- **The cache saves less than first hoped**, because the strict 0.15 threshold only matches near-identical claims (see [Response cache writes](#response-cache-writes)).
 
 One-off ingestion, measured in plan 02: 28 sources, 1,811 chunks, 823k tokens of `text-embedding-3-small` embeddings, about $0.02. Re-ingesting a changed source costs a fraction of a cent, since unchanged chunks come from the cache.
 
