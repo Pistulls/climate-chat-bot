@@ -10,6 +10,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 | 02 | [Ingestion](Plans/02.Ingestion.md) | Done | Python CLI: manifest → extract → chunk → embed → load → eval. The bake-off chose `text-embedding-3-small` (20/20 myths, 0.7 s p95). 1,811 chunks from 28 sources loaded in dev and prod; both live indexes find all 20 test myths. Runbook: [README.md](../README.md#ingestion) |
 | 03 | [Python service (`/api/chat`)](Plans/03.Service.md) | Done | Plain Lambda handler, no framework or new dependencies. Deployed to the prod Lambda by CI on merge to `main` and smoke-tested; not public until plan 04's UI sends real Turnstile tokens. Cache miss ~$0.0010 in 5–8.6 s, hit ~$0.0003 in 2.3–4.4 s. Runbook: [README.md](../README.md#service) |
 | 04 | Solid UI | Not started | |
+| 05 | [Comment context (`subject`, `thread`)](Plans/05.Context.md) | Not started | Design written, awaiting approval. Can be built before 04 |
 
 Status values: Not started, Planned, In progress, Done.
 

@@ -35,14 +35,14 @@ climate-chat.<domain>  →  CloudFront
 - **UI:** plain **Solid 2 + Vite** single-page app (`solid-js` 2.0.3 and `vite-plugin-solid` 2.11.17 were current on npm on 2026-11-22). SolidStart isn't used, because its value is server rendering and server functions.
 - **One domain:** CloudFront sends `/api/*` to the Lambda function URL, so no CORS setup is needed. The function URL is locked to CloudFront with Origin Access Control (OAC), so direct calls are refused.
 - **API routes:**
-  - `POST /api/chat`: takes `{ comment, turnstile_token, platform?, style? }` and returns `{ reply, citations, fallacy, cached }`. See [Two-stage reply](#two-stage-reply-facts-then-tone) for `platform` and `style`.
+  - `POST /api/chat`: takes `{ comment, turnstile_token, platform?, style?, subject?, thread? }` and returns `{ reply, citations, fallacy, cached }`. See [Two-stage reply](#two-stage-reply-facts-then-tone) for `platform` and `style`, and [Comment context](#comment-context) for `subject` and `thread`.
   - `GET /api/sources` (optional, not in v1): returns the source list with links for the UI
 - **Every `POST` must send `x-amz-content-sha256`**, the hex SHA-256 of the request body. CloudFront's OAC signs the origin request to the function URL with it and doesn't hash bodies itself; without it the function URL refuses the request with a 403 that has no JSON error code. The UI computes it with `crypto.subtle.digest`.
 - **Errors** are JSON `{ "error": "<code>", "message": "<text>" }`:
 
   | Status | When |
   |---|---|
-  | 400 | Bad JSON, an unknown `style` or `platform`, or a comment over the length cap |
+  | 400 | Bad JSON, an unknown `style` or `platform`, or a `comment`, `subject` or `thread` over its length cap (`comment_too_long`, `subject_too_long`, `thread_too_long`) |
   | 403 | Missing or failed Turnstile token |
   | 404 / 405 | Unknown path, or a method other than `POST` on `/api/chat` |
   | 429 | Rate limit reached |
@@ -59,7 +59,7 @@ climate-chat.<domain>  →  CloudFront
 
 Anyone can call `/api/chat`, and every cache miss costs money. Protection is layered, and almost all of it is free. The service runs the checks in this order, cheapest first, and all of them before any LLM call:
 
-1. **Comment length cap** (~1,000 characters). Free and needs no network call.
+1. **Length caps**: `comment` ~1,000 characters, `subject` ~300, `thread` ~1,000. Free and needs no network call.
 2. **Cloudflare Turnstile check** (free): see below.
 3. **Per-IP rate limit** in the Python service, using counters in the `climate-chat-ratelimits` table (e.g. 10 requests/minute, 100/day). There is one item per IP per window (`ip#<ip>#m#<minute>` and `ip#<ip>#d#<day>`), incremented by a conditional `UpdateItem` (`ADD count :1` if `count < limit`); a failed condition is a 429. Each item expires via TTL. The IP comes from the `CloudFront-Viewer-Address` header with the port stripped.
 4. **Lambda reserved concurrency** to cap how many requests run at once.
@@ -126,6 +126,7 @@ Measured in plan 03 (prod logs and the dev reply evaluation, 2026-11-24), with r
 
 - **About 40% more per reply than first estimated** (~$0.0007 per miss, ~$0.00024 per hit). The prompts are longer than assumed: Classify carries the CARDS and tone instructions, and Facts carries five ~500-token chunks.
 - **A cache miss is slower than the 4–6 s target**, mostly the Facts call. It's well within the Lambda's 30 s timeout and CloudFront's 30 s origin timeout. The UI shows a typing indicator while it waits.
+- **Comment context** (`subject`, `thread`) adds up to ~400 input tokens to Classify and ResponseBot at the caps, about $0.00008 per reply.
 - **A retried call adds its cost again**: a failed check retries once, so the worst case for a miss is about $0.0017.
 - **The cache saves less than first hoped**, because the strict 0.15 threshold only matches near-identical claims (see [Response cache writes](#response-cache-writes)).
 
@@ -155,6 +156,36 @@ comment ─► Classify LLM ─► normalised claim + CARDS category + tone prof
                                         │            (tone + style)
                                         └─► write to cache
 ```
+
+### Comment context
+
+A comment often only makes sense next to what it's replying to. Two optional free-text fields carry that:
+
+- **`subject`** (up to ~300 characters): what the comment is under, e.g. a video title, a post's description or the topic being discussed. Example: `"YouTube: Our heat pump after one UK winter in a 1930s semi"`.
+- **`thread`** (up to ~1,000 characters): the message the comment replies to, if any.
+
+Both are typed or pasted by the user, and are usually copied from strangers, so **both are treated as an attack vector**, exactly like the comment:
+
+- Trimmed, normalised to NFC and capped (400 if over) before Turnstile; an empty string counts as absent.
+- Only ever placed in the user message, inside their own tags (`<subject>`, `<thread>`). Every untrusted block has **all** of the prompt's tag names defused (`</comment`, `</subject`, `</thread`, `</source`, `</card` → `<\/…`), so no block can close another or fake one.
+- Never in a system message, and never allowed to change the rules. The prompts say instructions inside any block are data.
+- OpenRouter's own injection block, and every code check on the outputs, apply as before.
+
+**Where they're used:**
+
+| Call | Gets the context? | Why |
+|---|---|---|
+| Classify | Yes, both | To resolve what the comment means. The claim must still be the commenter's |
+| Claim embedding, cache, Facts Search, Facts | No | They work from the restated claim, which already carries the useful part ("heat pumps", "UK winters"). Cards stay neutral, and one card keeps serving every wording and every video |
+| ResponseBot | Yes, both | To answer in context ("for a 1930s semi, …") and to address the commenter, not the thread's author |
+
+**Classify rules for context:**
+
+- The claim is what **the commenter** asserts. `subject` and `thread` only resolve references ("it", "mine", "this", "they") and missing topic words. The restated claim must stand on its own, e.g. "Heat pumps don't work in cold UK winters".
+- A comment that only **endorses** a sceptical claim in `thread` ("This.", "Exactly 👆", "finally someone says it") makes that claim the commenter's.
+- A comment that **disputes** a sceptical thread, or a sceptical subject with a neutral comment, is not a sceptical claim. The bot answers commenters, not videos.
+
+**ResponseBot rules for context:** it may refer to the subject briefly, it doesn't quote or answer the thread's author, and facts still come only from the card.
 
 ### 1. Classify LLM
 
@@ -261,7 +292,7 @@ The non-filterable `answer_card` metadata holds the card **and the title, link a
 
 ## Request logs
 
-Each `/api/chat` request writes one item to `climate-chat-logs`, expiring after `LOG_TTL_DAYS` (90) via TTL. It holds the comment, the normalised claim, the CARDS category, whether the cache hit, the outcome (reply, not-a-claim, blocked, or the error code), and the model, tokens and cost of each call, plus the total latency. When a model output fails to parse or fails a check, `failures` records the call's role, the problems found and the first 1,000 characters of the output, so a 502 can be diagnosed from the log.
+Each `/api/chat` request writes one item to `climate-chat-logs`, expiring after `LOG_TTL_DAYS` (90) via TTL. It holds the comment, the `subject` and `thread` if given, the normalised claim, the CARDS category, whether the cache hit, the outcome (reply, not-a-claim, blocked, or the error code), and the model, tokens and cost of each call, plus the total latency. When a model output fails to parse or fails a check, `failures` records the call's role, the problems found and the first 1,000 characters of the output, so a 502 can be diagnosed from the log.
 
 **No IP address is logged.** The raw IP appears only in the rate-limit keys, which expire within a day. To see whether a few users generate most of the traffic (for example, one user making 90% of requests), each item has a `user_hash` instead:
 
