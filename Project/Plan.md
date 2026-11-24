@@ -66,4 +66,6 @@ Status values: Not started, Planned, In progress, Done.
 - **Keep v1 as simple as possible:** no `GET /api/sources`, only the `match` and `neutral` styles, cache lookup then search one after the other.
 - **Requests are grouped by a monthly keyed hash of the IP, never the IP itself**, to see whether a few users generate most of the traffic. It needs a new `log-hash-key` SSM secret.
 - **`max_tokens` and the cache distance are tuned by testing**, not fixed in advance. Haiku's hidden reasoning counts against `max_tokens`.
+- **No `temperature`, reasoning off, schemas enforced.** Phase 0 found neither Haiku 5.5 nor the fallback supports `temperature`. `reasoning: {enabled: false}` stops Haiku's hidden tokens eating the `max_tokens` cap. `require_parameters: true` keeps calls on providers that enforce the JSON schema.
+- **The cache starts strict, at a cosine distance of 0.15.** Even after normalising, different claims (methane vs CO2 "natural rise") can sit closer than rewordings of one claim. A wrong card is worse than a miss, so fewer cache hits are accepted.
 - **Ingestion-only packages move to an `ingest` dependency group** (still installed by default), so the Lambda zip leaves out `pdfplumber` and `tiktoken`.

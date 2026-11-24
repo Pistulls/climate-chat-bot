@@ -105,7 +105,9 @@ Embeddings cannot use a fallback model. Both indexes must be built and queried w
 
 Model IDs live in config (environment variables), not code, so they can change without a deploy. The fallback goes in OpenRouter's `models` list on each request.
 
-**Structured output.** Classify and Facts return JSON. They use OpenRouter's JSON-schema `response_format` where both the primary and fallback models support it; otherwise the prompt asks for JSON only, and output that doesn't parse is retried once.
+**Structured output.** Classify, Facts and Reply return JSON, using OpenRouter's JSON-schema `response_format` with `provider.require_parameters: true`, so only providers that enforce the schema are used. Both Haiku 5.5 and the fallback support it (plan 03, Phase 0). Output that still fails to parse is retried once.
+
+**No `temperature`.** Neither Haiku 5.5 nor the fallback supports it: with `require_parameters` a request that sets it finds no provider (HTTP 404), and without it OpenRouter silently drops it.
 
 ### Expected cost per reply
 
@@ -123,7 +125,8 @@ One-off ingestion, measured in plan 02: 28 sources, 1,811 chunks, 823k tokens of
 ### Cost and abuse controls
 
 - **A credit cap on each OpenRouter key.** Separate keys for `prod`, `dev` and `ingest`. A spent key returns HTTP 402, and the bot replies "can't answer right now".
-- `max_tokens` on every call, to cap the output length and cost, and low temperature. The values are config and are tuned by testing. Starting points: classify ~150, facts ~500, reply ~200. Haiku reasons with about 300 hidden tokens before it answers, and those count against `max_tokens`. A cap that's too small returns an empty reply, so testing must check reasoning as well as answer length.
+- `max_tokens` on every call, to cap the output length and cost. The values are config and are tuned by testing. Starting points: classify ~150, facts ~500, reply ~200.
+- **Reasoning off** (`reasoning: {enabled: false}`) on every call. With reasoning on, Haiku spent 0–114 hidden tokens per call, which count against `max_tokens`: at 150 the answer was cut off, and `reasoning: {max_tokens: 0}` used the whole cap on reasoning and returned nothing. With it off, 21 of 21 calls used no reasoning tokens and Classify took 0.6–1.8 s. Whether Facts writes better cards with reasoning on is checked when tuning.
 - API key stored as an SSM Parameter Store SecureString (free tier), not Secrets Manager.
 - Token usage and cost from each response's `usage` field written to `climate-chat-logs` (see [Request logs](#request-logs)).
 - Provider routing set to deny data collection and prefer providers that don't retain data.
@@ -235,6 +238,8 @@ Secrets Manager was not chosen. It costs $0.40 per secret per month plus API cha
 ## Response cache writes
 
 **A lookup hits** when the nearest cached claim (top 1) is within `CACHE_MAX_DISTANCE` (cosine distance, config). The value is tuned by testing with paraphrases of the same claim (casual, formal, with emoji): close enough to match rewordings, not so loose that different claims share a card.
+
+The two overlap. After Classify normalises them, rewordings of one claim sit 0.16–0.35 apart, but different claims can sit closer: "methane rise is natural" is 0.19 from "CO2 rise is natural", and "wind doesn't work without wind" is 0.27 from "solar doesn't work at night". Serving the wrong card is worse than a miss, so the threshold starts **strict, at 0.15**: only near-identical claims hit, and the cache saves less than the cost table assumes.
 
 **Answer cards** (not toned replies) are **written straight into the `response-cache` index**, with no review step. The vector is the embedding of the normalised claim. Only cards that pass the citation check are written. `confidence` and `cards_category` are stored as filterable metadata, so weak entries can be found and removed later.
 

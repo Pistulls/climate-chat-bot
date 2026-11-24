@@ -1,4 +1,4 @@
-"""Embeddings through OpenRouter's OpenAI-compatible API.
+"""Embeddings and chat completions through OpenRouter's OpenAI-compatible API.
 
 Shared by ingestion (documents) and the service (queries), so both embed the same way.
 Documents are embedded as they are; queries get the model's instruction prefix, which
@@ -21,6 +21,10 @@ MAX_RETRIES = 5  # the SDK retries 408/409/429/5xx with exponential backoff
 
 # Ask OpenRouter to route only to providers that don't keep or train on the data.
 PROVIDER_ROUTING = {"provider": {"data_collection": "deny"}}
+
+# Chat calls run inside the Lambda's 30 s budget, so they retry less and time out sooner.
+CHAT_MAX_RETRIES = 2
+CHAT_TIMEOUT_S = 20
 
 QUERY_TASK = "Given a climate-sceptic claim, retrieve passages with evidence about it"
 
@@ -110,6 +114,82 @@ class EmbeddingClient:
         if response.usage is not None:
             self.tokens_used += response.usage.prompt_tokens
         return vectors
+
+
+@dataclass(frozen=True)
+class ChatResult:
+    text: str  # "" when the model returned no answer; the caller decides what that means
+    model: str  # the model that served the request (the fallback, if it was used)
+    prompt_tokens: int
+    completion_tokens: int
+    reasoning_tokens: int
+    cost: float  # USD, from OpenRouter's usage.cost
+
+
+class ChatClient:
+    """Chat completions with JSON-schema output (Design.md, LLM).
+
+    Every call names the fallback model, routes only to providers that deny data collection
+    and support every parameter sent (so the schema is enforced), turns reasoning off unless
+    asked, and never sends `temperature`, which neither configured model supports.
+    """
+
+    def __init__(self, client: Any, fallback: str):
+        self.client = client
+        self.fallback = fallback
+
+    @classmethod
+    def from_api_key(cls, api_key: str, fallback: str) -> ChatClient:
+        client = openai.OpenAI(
+            api_key=api_key,
+            base_url=OPENROUTER_BASE_URL,
+            max_retries=CHAT_MAX_RETRIES,
+            timeout=CHAT_TIMEOUT_S,
+        )
+        return cls(client, fallback)
+
+    def complete(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        *,
+        max_tokens: int,
+        schema: dict[str, Any],
+        reasoning: bool = False,
+    ) -> ChatResult:
+        try:
+            response = self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {"name": "output", "strict": True, "schema": schema},
+                },
+                extra_body={
+                    "models": [model, self.fallback],
+                    "provider": {**PROVIDER_ROUTING["provider"], "require_parameters": True},
+                    "reasoning": {"enabled": reasoning},
+                },
+            )
+        except openai.APIStatusError as e:
+            if e.status_code == 402:
+                raise CreditCapReached(
+                    "OpenRouter returned 402: this key's credit cap is spent"
+                ) from e
+            raise
+
+        usage = response.usage
+        details = getattr(usage, "completion_tokens_details", None)
+        extra = getattr(usage, "model_extra", None) or {}
+        return ChatResult(
+            text=response.choices[0].message.content or "",
+            model=response.model,
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            reasoning_tokens=getattr(details, "reasoning_tokens", None) or 0,
+            cost=float(extra.get("cost") or 0.0),
+        )
 
 
 def resolve_ingest_api_key(settings: Settings, ssm_client: Any | None = None) -> str:
