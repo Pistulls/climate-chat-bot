@@ -7,6 +7,9 @@ locals {
     prod_turnstile    = "/climate-chat/prod/turnstile-secret-key"
     dev_openrouter    = "/climate-chat/dev/openrouter-api-key"
     ingest_openrouter = "/climate-chat/ingest/openrouter-api-key"
+    # HMAC key for the hashed user ids in the request logs (Project/Design.md, Request logs).
+    prod_log_hash = "/climate-chat/prod/log-hash-key"
+    dev_log_hash  = "/climate-chat/dev/log-hash-key"
   }
 }
 

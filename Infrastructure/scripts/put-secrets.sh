@@ -26,6 +26,8 @@ PROD_OPENROUTER_API_KEY:/climate-chat/prod/openrouter-api-key
 PROD_TURNSTILE_SECRET_KEY:/climate-chat/prod/turnstile-secret-key
 DEV_OPENROUTER_API_KEY:/climate-chat/dev/openrouter-api-key
 INGEST_OPENROUTER_API_KEY:/climate-chat/ingest/openrouter-api-key
+PROD_LOG_HASH_KEY:/climate-chat/prod/log-hash-key
+DEV_LOG_HASH_KEY:/climate-chat/dev/log-hash-key
 "
 
 # Value of KEY from the file, read without sourcing it (so nothing in it is executed).

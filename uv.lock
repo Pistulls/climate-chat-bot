@@ -218,12 +218,11 @@ wheels = [
 name = "climate-chat"
 version = "0.1.0"
 source = { editable = "." }
+default-groups = ["dev", "ingest"]
 dependencies = [
     { name = "boto3" },
     { name = "numpy" },
     { name = "openai" },
-    { name = "pdfplumber" },
-    { name = "tiktoken" },
 ]
 
 [package.dev-dependencies]
@@ -231,20 +230,26 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+ingest = [
+    { name = "pdfplumber" },
+    { name = "tiktoken" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "boto3", specifier = "==1.44.9" },
     { name = "numpy", specifier = "==2.5.5" },
     { name = "openai", specifier = "==3.57.0" },
-    { name = "pdfplumber", specifier = "==0.11.11" },
-    { name = "tiktoken", specifier = "==0.14.0" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "pytest", specifier = "==9.2.0" },
     { name = "ruff", specifier = "==0.17.6" },
+]
+ingest = [
+    { name = "pdfplumber", specifier = "==0.11.11" },
+    { name = "tiktoken", specifier = "==0.14.0" },
 ]
 
 [[package]]

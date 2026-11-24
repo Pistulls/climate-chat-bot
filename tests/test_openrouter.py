@@ -149,3 +149,116 @@ class TestResolveIngestApiKey:
         assert resolve_ingest_api_key(s, SSM()) == "from-ssm"
         name = "/climate-chat/ingest/openrouter-api-key"
         assert calls == [{"Name": name, "WithDecryption": True}]
+
+
+# --- ChatClient (plan 03) ---
+
+SCHEMA = {
+    "type": "object",
+    "properties": {"claim": {"type": "string"}},
+    "required": ["claim"],
+    "additionalProperties": False,
+}
+MESSAGES = [{"role": "user", "content": "hi"}]
+
+
+class FakeCompletions:
+    """Stands in for client.chat.completions; records calls and returns one canned reply."""
+
+    def __init__(self, content='{"claim": "x"}', error=None, cost=0.00012, reasoning=0):
+        self.calls = []
+        self.content, self.error, self.cost, self.reasoning = content, error, cost, reasoning
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error:
+            raise self.error
+        usage = SimpleNamespace(
+            prompt_tokens=80,
+            completion_tokens=40,
+            completion_tokens_details=SimpleNamespace(reasoning_tokens=self.reasoning),
+            model_extra={"cost": self.cost} if self.cost is not None else {},
+        )
+        message = SimpleNamespace(content=self.content)
+        return SimpleNamespace(
+            model="openai/gpt-6-luna", choices=[SimpleNamespace(message=message)], usage=usage
+        )
+
+
+def chat(fake):
+    from climate_chat.openrouter import ChatClient
+
+    return ChatClient(SimpleNamespace(chat=SimpleNamespace(completions=fake)), "openai/gpt-6-luna")
+
+
+class TestChatClient:
+    def test_complete_sends_fallback_and_routing(self):
+        fake = FakeCompletions()
+        chat(fake).complete("anthropic/claude-haiku-5.5", MESSAGES, max_tokens=150, schema=SCHEMA)
+        call = fake.calls[0]
+        assert call["model"] == "anthropic/claude-haiku-5.5"
+        assert call["messages"] == MESSAGES
+        assert call["max_tokens"] == 150
+        body = call["extra_body"]
+        assert body["models"] == ["anthropic/claude-haiku-5.5", "openai/gpt-6-luna"]
+        assert body["provider"] == {"data_collection": "deny", "require_parameters": True}
+        assert call["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {"name": "output", "strict": True, "schema": SCHEMA},
+        }
+
+    def test_complete_sends_no_temperature(self):
+        fake = FakeCompletions()
+        chat(fake).complete("m", MESSAGES, max_tokens=150, schema=SCHEMA)
+        assert "temperature" not in fake.calls[0]
+        assert "temperature" not in fake.calls[0]["extra_body"]
+
+    def test_complete_reasoning_off_by_default(self):
+        fake = FakeCompletions()
+        client = chat(fake)
+        client.complete("m", MESSAGES, max_tokens=150, schema=SCHEMA)
+        client.complete("m", MESSAGES, max_tokens=150, schema=SCHEMA, reasoning=True)
+        assert [c["extra_body"]["reasoning"] for c in fake.calls] == [
+            {"enabled": False},
+            {"enabled": True},
+        ]
+
+    def test_complete_maps_402(self):
+        fake = FakeCompletions(error=status_error(402))
+        with pytest.raises(CreditCapReached):
+            chat(fake).complete("m", MESSAGES, max_tokens=150, schema=SCHEMA)
+
+    def test_complete_other_errors_propagate(self):
+        fake = FakeCompletions(error=status_error(500))
+        with pytest.raises(openai.APIStatusError):
+            chat(fake).complete("m", MESSAGES, max_tokens=150, schema=SCHEMA)
+
+    def test_complete_reads_usage_and_cost(self):
+        result = chat(FakeCompletions(reasoning=7)).complete(
+            "m", MESSAGES, max_tokens=150, schema=SCHEMA
+        )
+        assert result.text == '{"claim": "x"}'
+        assert result.model == "openai/gpt-6-luna"  # the model that actually served it
+        assert (result.prompt_tokens, result.completion_tokens) == (80, 40)
+        assert result.reasoning_tokens == 7
+        assert result.cost == pytest.approx(0.00012)
+
+    def test_complete_missing_cost_is_zero(self):
+        result = chat(FakeCompletions(cost=None)).complete(
+            "m", MESSAGES, max_tokens=150, schema=SCHEMA
+        )
+        assert result.cost == 0.0
+
+    def test_complete_empty_content_returns_empty_text(self):
+        result = chat(FakeCompletions(content=None)).complete(
+            "m", MESSAGES, max_tokens=150, schema=SCHEMA
+        )
+        assert result.text == ""
+
+
+def test_complete_maps_403_to_content_blocked():
+    from climate_chat.openrouter import ContentBlocked
+
+    fake = FakeCompletions(error=status_error(403))
+    with pytest.raises(ContentBlocked):
+        chat(fake).complete("m", MESSAGES, max_tokens=150, schema=SCHEMA)

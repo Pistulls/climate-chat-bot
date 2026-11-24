@@ -6,12 +6,12 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.14"
 # Pinned to the versions vetted in Project/Plans/02.Ingestion.md (Phase 0).
+# Runtime dependencies of the service (the Lambda zip). Ingestion-only packages are in the
+# `ingest` group, installed by default for local work but left out of the Lambda build.
 dependencies = [
     "boto3==1.44.9",
     "numpy==2.5.5",
     "openai==3.57.0",
-    "pdfplumber==0.11.11",
-    "tiktoken==0.14.0",
 ]
 
 [dependency-groups]
@@ -19,6 +19,13 @@ dev = [
     "pytest==9.2.0",
     "ruff==0.17.6",
 ]
+ingest = [
+    "pdfplumber==0.11.11",
+    "tiktoken==0.14.0",
+]
+
+[tool.uv]
+default-groups = ["dev", "ingest"]
 
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]
@@ -26,7 +33,9 @@ build-backend = "uv_build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra -m 'not live'"
+# Live tests call OpenRouter and the dev AWS stores: uv run pytest -m live
+markers = ["live: calls real services (OpenRouter, dev AWS); skipped unless -m live"]
 
 [tool.ruff]
 line-length = 100
