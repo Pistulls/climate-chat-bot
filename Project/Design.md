@@ -43,7 +43,9 @@ climate-chat.<domain>  →  CloudFront
   |---|---|
   | 400 | Bad JSON, an unknown `style` or `platform`, or a comment over the length cap |
   | 403 | Missing or failed Turnstile token |
+  | 404 / 405 | Unknown path, or a method other than `POST` on `/api/chat` |
   | 429 | Rate limit reached |
+  | 500 | An unexpected error (details are logged, never returned) |
   | 502 | A model call failed, or its output failed the code checks after one retry |
   | 503 | The OpenRouter key's credit cap is spent ("can't answer right now") |
 

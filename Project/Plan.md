@@ -8,7 +8,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 |---|---|---|---|
 | 01 | [Infrastructure](Plans/01.Infra.md) | Done | Live at climate-chat.<domain>; CI applies prod on merge to main. Runbook: [Infrastructure/README.md](../Infrastructure/README.md) |
 | 02 | [Ingestion](Plans/02.Ingestion.md) | Done | Python CLI: manifest → extract → chunk → embed → load → eval. The bake-off chose `text-embedding-3-small` (20/20 myths, 0.7 s p95). 1,811 chunks from 28 sources loaded in dev and prod; both live indexes find all 20 test myths. Runbook: [README.md](../README.md#ingestion) |
-| 03 | [Python service (`/api/chat`)](Plans/03.Service.md) | Not started | Design written, awaiting approval. Ends deployed to the prod Lambda but not public |
+| 03 | [Python service (`/api/chat`)](Plans/03.Service.md) | Planned | Plain Lambda handler, no framework or new dependencies. Ends deployed to the prod Lambda by CI and smoke-tested, but not public until plan 04 |
 | 04 | Solid UI | Not started | |
 
 Status values: Not started, Planned, In progress, Done.
@@ -57,3 +57,13 @@ Status values: Not started, Planned, In progress, Done.
 - **Chunks that are mostly numbers are skipped** (under 20% words): unlabelled table grids and scrambled chart text can't answer a claim and would only add noise to retrieval. This removes most of #23's statistics tables.
 - **The embedding model is `openai/text-embedding-3-small`.** It found all 20 myths' sources against Qwen3's 19, and Qwen3's 12 s p95 query latency on OpenRouter would break the reply budget. Chunks are embedded with their source title as a first line.
 - **`Infrastructure/` is excluded from ruff**, so Python formatting never touches the deployed Lambda placeholder or triggers an infra CI run.
+
+### 03. Service
+
+- **Design.md is the source of truth for how the service behaves.** Plans describe how it gets built, tested and deployed, and link to Design.md instead of restating it.
+- **Plan 03 ends deployed but not public.** Real Turnstile tokens only come from the widget, so the first public end-to-end test is in plan 04. The prod pipeline is tested with an IAM-only direct-invoke smoke event.
+- **A plain Lambda handler, no web framework.** One route doesn't justify FastAPI's four extra packages and slower cold starts. A standard-library `http.server` runner serves the same handler locally.
+- **Keep v1 as simple as possible:** no `GET /api/sources`, only the `match` and `neutral` styles, cache lookup then search one after the other.
+- **Requests are grouped by a monthly keyed hash of the IP, never the IP itself**, to see whether a few users generate most of the traffic. It needs a new `log-hash-key` SSM secret.
+- **`max_tokens` and the cache distance are tuned by testing**, not fixed in advance. Haiku's hidden reasoning counts against `max_tokens`.
+- **Ingestion-only packages move to an `ingest` dependency group** (still installed by default), so the Lambda zip leaves out `pdfplumber` and `tiktoken`.
