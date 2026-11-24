@@ -64,6 +64,24 @@ variable "limits" {
   }
 }
 
+# Tuned in plan 03 (Phase 4); see Project/Design.md, LLM. The code has the same defaults.
+variable "service" {
+  type = object({
+    max_tokens_classify = number
+    max_tokens_facts    = number
+    max_tokens_reply    = number
+    cache_max_distance  = number       # cosine distance for a response-cache hit
+    excluded_licences   = list(string) # licence values the Facts Search must not quote
+  })
+  default = {
+    max_tokens_classify = 200
+    max_tokens_facts    = 1000
+    max_tokens_reply    = 300
+    cache_max_distance  = 0.15
+    excluded_licences   = [] # decided before launch (plan 04)
+  }
+}
+
 variable "lambda" {
   type = object({
     runtime     = string
