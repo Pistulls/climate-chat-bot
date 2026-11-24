@@ -15,12 +15,10 @@ from typing import Any
 
 from botocore.exceptions import ClientError
 
-from climate_chat.service.api import ApiError
+from climate_chat.service.api import ApiError, unavailable
 
 SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 LOCAL_IP = "local"
-
-UNAVAILABLE = ApiError(503, "unavailable", "Sorry, I can't answer right now. Please try later.")
 
 
 def client_ip(headers: dict[str, str], header_name: str) -> str:
@@ -53,10 +51,10 @@ def verify_turnstile(
     try:
         with urlopen(request, timeout=timeout) as response:
             if getattr(response, "status", 200) != 200:
-                raise UNAVAILABLE
+                raise unavailable()
             result = json.loads(response.read())
     except (OSError, ValueError) as e:  # URLError, HTTPError and timeouts are OSErrors
-        raise UNAVAILABLE from e
+        raise unavailable() from e
     if result.get("success") is not True:
         raise ApiError(403, "turnstile_failed", "The bot check failed. Please try again.")
 

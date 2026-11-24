@@ -27,7 +27,7 @@ SSM_PARAMS = {
 }
 
 # Starting points from Design.md; tuned in plan 03 and overridden by environment variables.
-DEFAULT_MAX_TOKENS = {"classify": 150, "facts": 500, "reply": 200}
+DEFAULT_MAX_TOKENS = {"classify": 150, "facts": 1000, "reply": 200}
 DEFAULT_CACHE_MAX_DISTANCE = 0.15
 
 

@@ -34,6 +34,18 @@ class ChatRequest:
     style: str
 
 
+def unavailable() -> ApiError:
+    """503: a dependency we can't do without (OpenRouter credit, Cloudflare) is unavailable."""
+    return ApiError(503, "unavailable", "Sorry, I can't answer right now. Please try later.")
+
+
+def upstream_error() -> ApiError:
+    """502: a model call failed, or its output failed the checks after one retry."""
+    return ApiError(
+        502, "upstream_error", "Sorry, I couldn't write a sourced reply. Please try again."
+    )
+
+
 def ok_response(payload: dict[str, Any]) -> dict[str, Any]:
     return _response(200, payload)
 

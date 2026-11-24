@@ -125,7 +125,7 @@ One-off ingestion, measured in plan 02: 28 sources, 1,811 chunks, 823k tokens of
 ### Cost and abuse controls
 
 - **A credit cap on each OpenRouter key.** Separate keys for `prod`, `dev` and `ingest`. A spent key returns HTTP 402, and the bot replies "can't answer right now".
-- `max_tokens` on every call, to cap the output length and cost. The values are config and are tuned by testing. Starting points: classify ~150, facts ~500, reply ~200.
+- `max_tokens` on every call, to cap the output length and cost. The values are config and are tuned by testing. Starting points: classify ~150, facts ~1000, reply ~200. A Facts card measured 450–530 output tokens, so a cap of 500 cut it off mid-JSON (plan 03, Phase 3).
 - **Reasoning off** (`reasoning: {enabled: false}`) on every call. With reasoning on, Haiku spent 0–114 hidden tokens per call, which count against `max_tokens`: at 150 the answer was cut off, and `reasoning: {max_tokens: 0}` used the whole cap on reasoning and returned nothing. With it off, 21 of 21 calls used no reasoning tokens and Classify took 0.6–1.8 s. Whether Facts writes better cards with reasoning on is checked when tuning.
 - API key stored as an SSM Parameter Store SecureString (free tier), not Secrets Manager.
 - Token usage and cost from each response's `usage` field written to `climate-chat-logs` (see [Request logs](#request-logs)).
@@ -242,6 +242,8 @@ Secrets Manager was not chosen. It costs $0.40 per secret per month plus API cha
 The two overlap. After Classify normalises them, rewordings of one claim sit 0.16–0.35 apart, but different claims can sit closer: "methane rise is natural" is 0.19 from "CO2 rise is natural", and "wind doesn't work without wind" is 0.27 from "solar doesn't work at night". Serving the wrong card is worse than a miss, so the threshold starts **strict, at 0.15**: only near-identical claims hit, and the cache saves less than the cost table assumes.
 
 **Answer cards** (not toned replies) are **written straight into the `response-cache` index**, with no review step. The vector is the embedding of the normalised claim. Only cards that pass the citation check are written. `confidence` and `cards_category` are stored as filterable metadata, so weak entries can be found and removed later.
+
+The non-filterable `answer_card` metadata holds the card **and the title, link and pages of every chunk it cites**: `{"card": {...}, "sources": {"<chunk id>": {"title", "url", "pages"}}}`. A cache hit then builds the reply's citations without a second lookup in the `sources` index. A cache entry that can't be read is treated as a miss and overwritten.
 
 ## Request logs
 

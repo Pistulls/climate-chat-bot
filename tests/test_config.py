@@ -110,7 +110,7 @@ class TestServiceSettings:
         )
         assert (s.rate_limit_per_minute, s.rate_limit_per_day) == (10, 100)
         assert (s.max_comment_chars, s.log_ttl_days) == (1000, 90)
-        assert s.max_tokens == {"classify": 150, "facts": 500, "reply": 200}
+        assert s.max_tokens == {"classify": 150, "facts": 1000, "reply": 200}
         assert s.cache_max_distance == 0.15
         assert s.excluded_licences == ()
         assert s.client_ip_header == "cloudfront-viewer-address"
