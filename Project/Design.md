@@ -254,7 +254,7 @@ The non-filterable `answer_card` metadata holds the card **and the title, link a
 
 ## Request logs
 
-Each `/api/chat` request writes one item to `climate-chat-logs`, expiring after `LOG_TTL_DAYS` (90) via TTL. It holds the comment, the normalised claim, the CARDS category, whether the cache hit, the outcome (reply, not-a-claim, or the error code), and the model, tokens and cost of each call, plus the total latency.
+Each `/api/chat` request writes one item to `climate-chat-logs`, expiring after `LOG_TTL_DAYS` (90) via TTL. It holds the comment, the normalised claim, the CARDS category, whether the cache hit, the outcome (reply, not-a-claim, blocked, or the error code), and the model, tokens and cost of each call, plus the total latency. When a model output fails to parse or fails a check, `failures` records the call's role, the problems found and the first 1,000 characters of the output, so a 502 can be diagnosed from the log.
 
 **No IP address is logged.** The raw IP appears only in the rate-limit keys, which expire within a day. To see whether a few users generate most of the traffic (for example, one user making 90% of requests), each item has a `user_hash` instead:
 

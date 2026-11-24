@@ -56,6 +56,8 @@ def log_item(
         entry["claim"] = trace.claim
     if trace.cards_category is not None:
         entry["cards_category"] = trace.cards_category
+    if trace.failures:
+        entry["failures"] = trace.failures
     return entry
 
 

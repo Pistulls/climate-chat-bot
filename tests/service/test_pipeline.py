@@ -364,3 +364,28 @@ def test_retry_after_unparseable_output_says_so():
     run(pipeline)
     retry = chat.calls[1][3]
     assert "valid JSON" in retry[-1]["content"]
+
+
+def test_failed_attempts_recorded_with_problems_and_output():
+    bad = {"reply": "Solar made 12% of electricity.", "source_ids": ["24-0003"]}
+    pipeline, *_ = make(FakeChat(reply=[bad, REPLY]))
+    _, trace = run(pipeline)
+    assert trace.failures == [
+        {
+            "role": "reply",
+            "problems": ["the reply uses the number 12, which isn't in the card"],
+            "output": json.dumps(bad),
+        }
+    ]
+
+
+def test_failed_output_truncated_in_trace():
+    pipeline, *_ = make(FakeChat(classify=["x" * 5000, CLASSIFICATION]))
+    _, trace = run(pipeline)
+    assert len(trace.failures[0]["output"]) == 1000
+
+
+def test_no_failures_on_clean_run():
+    pipeline, *_ = make()
+    _, trace = run(pipeline)
+    assert trace.failures == []

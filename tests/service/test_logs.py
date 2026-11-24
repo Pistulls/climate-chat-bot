@@ -108,3 +108,14 @@ def test_write_log_failure_does_not_raise(capsys):
 
     write_log(Broken(), {"pk": "a", "sk": "b"})
     assert "log write failed" in capsys.readouterr().out
+
+
+def test_log_item_includes_failures():
+    t = trace()
+    t.failures.append({"role": "reply", "problems": ["too long"], "output": "{...}"})
+    entry = item(trace=t, result=None, error_code="upstream_error")
+    assert entry["failures"] == [{"role": "reply", "problems": ["too long"], "output": "{...}"}]
+
+
+def test_log_item_omits_empty_failures():
+    assert "failures" not in item()

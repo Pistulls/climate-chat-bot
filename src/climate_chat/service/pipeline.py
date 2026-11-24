@@ -25,6 +25,7 @@ from climate_chat.service.checks import check_card, check_reply
 from climate_chat.vectors import Match, VectorIndex
 
 TOP_K = 5
+MAX_LOGGED_OUTPUT = 1000  # characters of a failed model output kept for the logs
 
 NOT_A_CLAIM_REPLY = (
     "I only reply to comments that question climate science or climate solutions, "
@@ -59,6 +60,8 @@ class Trace:
     cards_category: str | None = None
     cached: bool = False
     card: AnswerCard | None = None  # for evaluation reports
+    # One entry per failed attempt: {role, problems, output}, so a 502 can be diagnosed.
+    failures: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -220,6 +223,9 @@ class Pipeline:
                 problems = e.problems
             except (ValueError, TypeError, AttributeError) as e:
                 problems = [f"the output wasn't valid JSON in the required shape ({e})"]
+            trace.failures.append(
+                {"role": role, "problems": problems, "output": result.text[:MAX_LOGGED_OUTPUT]}
+            )
             # Retry once, showing the model its output and what was wrong with it.
             attempt = [
                 *messages,
