@@ -9,7 +9,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 | 01 | [Infrastructure](Plans/01.Infra.md) | Done | Live at climate-chat.<domain>; CI applies prod on merge to main. Runbook: [Infrastructure/README.md](../Infrastructure/README.md) |
 | 02 | [Ingestion](Plans/02.Ingestion.md) | Done | Python CLI: manifest → extract → chunk → embed → load → eval. The bake-off chose `text-embedding-3-small` (20/20 myths, 0.7 s p95). 1,811 chunks from 28 sources loaded in dev and prod; both live indexes find all 20 test myths. Runbook: [README.md](../README.md#ingestion) |
 | 03 | [Python service (`/api/chat`)](Plans/03.Service.md) | Done | Plain Lambda handler, no framework or new dependencies. Deployed to the prod Lambda by CI on merge to `main` and smoke-tested; not public until plan 04's UI sends real Turnstile tokens. Cache miss ~$0.0010 in 5–8.6 s, hit ~$0.0003 in 2.3–4.4 s. Runbook: [README.md](../README.md#service) |
-| 04 | Solid UI | Not started | |
+| 04 | [Solid UI](Plans/04.UI.md) | Planned | One-shot page, minimal styling, pnpm with every package audited. Ends working end to end in prod, not launched |
 | 05 | [Comment context (`subject`, `thread`)](Plans/05.Context.md) | Done | Two optional free-text fields, treated as an attack vector, used by Classify and ResponseBot only. Live in prod (PR #9). Showed the heat-pump source gap |
 
 Status values: Not started, Planned, In progress, Done.
@@ -73,6 +73,15 @@ Status values: Not started, Planned, In progress, Done.
 - **Comments OpenRouter refuses get a polite fixed reply, not an error.** OpenRouter blocks prompt-injection patterns itself (403). Retrying can't help, so the API returns 200 with "Sorry, I can't reply to that comment." and logs `blocked`.
 - **Every output check is code, retried once with feedback.** Citations, numbers, the platform length and a short `fallacy` label are all checked in code. A failure is retried once, with the failed output and the problems found sent back; a second failure is a 502, and the failures are logged.
 - **Settings come from the environment alone when there's no repo around the code.** The Lambda zip has no `pyproject.toml`; looking for `.env` through it would have failed every cold start.
+
+### 04. UI
+
+- **A one-shot page for now:** one form in, one reply card out. A chat-style thread would look conversational while each reply has no memory of the last.
+- **The form's platform defaults to YouTube** (500-character replies). The API's own default stays at 280 for requests that leave `platform` out.
+- **Minimal styling.** The goal is a working end-to-end system; a complete design comes later and replaces the markup and CSS.
+- **Plan 04 ends working, not launched.** The real Turnstile widget, the deployed UI and a proven prod round trip. Choosing licences and raising the Lambda concurrency quota come before any publicity.
+- **Solid 2 + Vite + TypeScript in `ui/`** (approach A), the stack Design.md chose, so the later design goes straight into it.
+- **pnpm, and every package passes a security audit before it's used.** Direct packages are vetted and recorded here; CI runs `pnpm audit`; install scripts are blocked; a minimum release age keeps out just-published versions.
 
 ### 05. Comment context
 

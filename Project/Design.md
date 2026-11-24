@@ -33,6 +33,8 @@ climate-chat.<domain>  →  CloudFront
 ```
 
 - **UI:** plain **Solid 2 + Vite** single-page app (`solid-js` 2.0.3 and `vite-plugin-solid` 2.11.17 were current on npm on 2026-11-22). SolidStart isn't used, because its value is server rendering and server functions.
+- **Packages:** installed with **pnpm**, with install scripts blocked and a minimum release age, so a just-published version isn't installed. **Every package passes a security audit before it's used:** each direct package is vetted (publisher, source repo, provenance, install scripts, what it pulls in) and recorded in Plan.md, and CI runs `pnpm audit` on every build and fails on any known vulnerability. The direct packages are kept to a minimum.
+- **UI deploy:** the UI's own CI workflow builds it and syncs it to the S3 bucket, with long-lived caching for hashed assets and `no-cache` for `index.html`, then invalidates `index.html` in CloudFront. Terraform doesn't touch the content.
 - **One domain:** CloudFront sends `/api/*` to the Lambda function URL, so no CORS setup is needed. The function URL is locked to CloudFront with Origin Access Control (OAC), so direct calls are refused.
 - **API routes:**
   - `POST /api/chat`: takes `{ comment, turnstile_token, platform?, style?, subject?, thread? }` and returns `{ reply, citations, fallacy, cached }`. See [Two-stage reply](#two-stage-reply-facts-then-tone) for `platform` and `style`, and [Comment context](#comment-context) for `subject` and `thread`.
@@ -74,7 +76,7 @@ Turnstile is Cloudflare's free bot check. It works on any site, so the domain do
 1. The Solid app renders the Turnstile widget in **managed mode**, so most people never see a challenge. The widget uses the public **site key**, which is baked into the UI build.
 2. Each `POST /api/chat` sends the widget's token with the comment: `{ comment, turnstile_token }`.
 3. The Python service verifies the token with Cloudflare's `siteverify` endpoint, using the private **secret key**, **before** the rate limit, the cache lookup or any LLM call. A missing or failed token returns HTTP 403.
-4. Tokens are single-use and expire after 5 minutes, so the UI requests a fresh token for each message.
+4. Tokens are single-use and expire after 5 minutes, so the UI resets the widget after every response (success or error), and each message gets a fresh token.
 
 The secret key is stored like the OpenRouter keys (see Secrets).
 
