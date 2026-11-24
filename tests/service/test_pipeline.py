@@ -389,3 +389,54 @@ def test_no_failures_on_clean_run():
     pipeline, *_ = make()
     _, trace = run(pipeline)
     assert trace.failures == []
+
+
+# --- comment context (plan 05) ---
+
+SUBJECT = "YouTube: Our heat pump after one UK winter"
+THREAD = "Heat pumps are useless in the cold"
+
+
+def test_context_reaches_classify_and_reply():
+    pipeline, chat, *_ = make()
+    pipeline.run("mine barely works", "match", None, Trace(), subject=SUBJECT, thread=THREAD)
+    for role in ("classify", "reply"):
+        text = next(c[3] for c in chat.calls if c[0] == role)[1]["content"]
+        assert f"<subject>{SUBJECT}</subject>" in text
+        assert f"<thread>{THREAD}</thread>" in text
+
+
+def test_context_never_reaches_facts_or_embedding():
+    pipeline, chat, *_ = make()
+    pipeline.run("mine barely works", "match", None, Trace(), subject=SUBJECT, thread=THREAD)
+    facts = next(c[3] for c in chat.calls if c[0] == "facts")
+    assert all(SUBJECT not in m["content"] and THREAD not in m["content"] for m in facts)
+    assert pipeline.embedder.queries == [CLASSIFICATION["claim"]]
+
+
+def test_cache_key_ignores_context():
+    chat = FakeChat(classify=[CLASSIFICATION] * 2, facts=[CARD] * 2, reply=[REPLY] * 2)
+    pipeline, _, _, cache = make(chat)
+    pipeline.run("it fails", "match", None, Trace(), subject="Video A")
+    pipeline.run("it fails", "match", None, Trace(), subject="Video B")
+    keys = {v["key"] for put in cache.puts for v in put["vectors"]}
+    assert len(keys) == 1
+
+
+def test_reply_may_use_numbers_from_comment_subject_and_thread():
+    quoted = {
+        "reply": "For a 1930s semi below 5C, after 20 years: solar made 7% in 2024.",
+        "source_ids": ["24-0003"],
+    }
+    pipeline, *_ = make(FakeChat(reply=[quoted]))
+    trace = Trace()
+    out = pipeline.run(
+        "barely works below 5C",
+        "match",
+        None,
+        trace,
+        subject="Heat pump in a 1930s semi",
+        thread="No warming for 20 years",
+    )
+    assert out.reply == quoted["reply"]
+    assert trace.failures == []

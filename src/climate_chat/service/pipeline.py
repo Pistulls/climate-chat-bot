@@ -102,9 +102,20 @@ class Pipeline:
         self.cache = cache
         self.settings = settings
 
-    def run(self, comment: str, style: str, platform: str | None, trace: Trace) -> PipelineResult:
+    def run(
+        self,
+        comment: str,
+        style: str,
+        platform: str | None,
+        trace: Trace,
+        *,
+        subject: str | None = None,
+        thread: str | None = None,
+    ) -> PipelineResult:
+        """`subject` and `thread` reach Classify and Reply only; Facts, the embedding and the
+        cache work from the restated claim (Design.md, Comment context)."""
         try:
-            return self._run(comment, style, platform, trace)
+            return self._run(comment, style, platform, trace, subject, thread)
         except ContentBlocked as e:
             # OpenRouter refused the text itself (e.g. a prompt injection attempt).
             print(f"comment blocked by OpenRouter: {e}")
@@ -114,13 +125,21 @@ class Pipeline:
         except (openai.OpenAIError, EmbeddingError) as e:
             raise upstream_error() from e
 
-    def _run(self, comment: str, style: str, platform: str | None, trace: Trace) -> PipelineResult:
+    def _run(
+        self,
+        comment: str,
+        style: str,
+        platform: str | None,
+        trace: Trace,
+        subject: str | None,
+        thread: str | None,
+    ) -> PipelineResult:
         s = self.settings
         classification = self._call(
             trace,
             "classify",
             s.model_classify,
-            prompts.classify_messages(comment),
+            prompts.classify_messages(comment, subject, thread),
             prompts.CLASSIFY_SCHEMA,
             lambda data: Classification.from_dict(data),
         )
@@ -139,11 +158,13 @@ class Pipeline:
             self.cache.put(vector, card, sources)
         trace.card = card
 
+        conversation = "\n".join(x for x in (comment, subject, thread) if x)
+
         def parse_reply(data: Any) -> tuple[str, list[str]]:
             text, ids = data.get("reply"), data.get("source_ids")
             if not isinstance(text, str) or not isinstance(ids, list):
                 raise ValueError("reply has the wrong shape")
-            problems = check_reply(text, ids, card, prompts.reply_length(platform))
+            problems = check_reply(text, ids, card, prompts.reply_length(platform), conversation)
             if problems:
                 raise _Retry(problems)
             return text.strip(), [str(i) for i in ids]
@@ -152,7 +173,9 @@ class Pipeline:
             trace,
             "reply",
             s.model_reply,
-            prompts.reply_messages(comment, classification.tone, card, style, platform),
+            prompts.reply_messages(
+                comment, classification.tone, card, style, platform, subject, thread
+            ),
             prompts.REPLY_SCHEMA,
             parse_reply,
         )

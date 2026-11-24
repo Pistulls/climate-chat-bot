@@ -10,6 +10,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 | 02 | [Ingestion](Plans/02.Ingestion.md) | Done | Python CLI: manifest → extract → chunk → embed → load → eval. The bake-off chose `text-embedding-3-small` (20/20 myths, 0.7 s p95). 1,811 chunks from 28 sources loaded in dev and prod; both live indexes find all 20 test myths. Runbook: [README.md](../README.md#ingestion) |
 | 03 | [Python service (`/api/chat`)](Plans/03.Service.md) | Done | Plain Lambda handler, no framework or new dependencies. Deployed to the prod Lambda by CI on merge to `main` and smoke-tested; not public until plan 04's UI sends real Turnstile tokens. Cache miss ~$0.0010 in 5–8.6 s, hit ~$0.0003 in 2.3–4.4 s. Runbook: [README.md](../README.md#service) |
 | 04 | Solid UI | Not started | |
+| 05 | [Comment context (`subject`, `thread`)](Plans/05.Context.md) | Planned | Two optional free-text fields, treated as an attack vector, used by Classify and ResponseBot only. Can be built before 04 |
 
 Status values: Not started, Planned, In progress, Done.
 
@@ -72,3 +73,10 @@ Status values: Not started, Planned, In progress, Done.
 - **Comments OpenRouter refuses get a polite fixed reply, not an error.** OpenRouter blocks prompt-injection patterns itself (403). Retrying can't help, so the API returns 200 with "Sorry, I can't reply to that comment." and logs `blocked`.
 - **Every output check is code, retried once with feedback.** Citations, numbers, the platform length and a short `fallacy` label are all checked in code. A failure is retried once, with the failed output and the problems found sent back; a second failure is a 502, and the failures are logged.
 - **Settings come from the environment alone when there's no repo around the code.** The Lambda zip has no `pyproject.toml`; looking for `.env` through it would have failed every cold start.
+
+### 05. Comment context
+
+- **Context is free text from the user, not fetched from URLs.** Fetching would need an outbound call, a YouTube key and the handling of long stranger-written descriptions.
+- **Two fields: `subject`** (what the comment is under) **and `thread`** (the message it replies to). Both are an attack vector, handled like the comment.
+- **Only Classify and ResponseBot see the context.** Facts, the search and the cache work from the restated claim, so cards stay neutral and one card still serves every video.
+- **Replies may quote numbers from the comment, subject and thread.** The number check exists to catch invented statistics, and quoted ones aren't invented. The prompt allows them only as references, never as facts.

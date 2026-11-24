@@ -54,10 +54,15 @@ def check_card(card: AnswerCard, retrieved_ids: set[str]) -> list[str]:
 
 
 def check_reply(
-    reply: str, source_ids: list[str], card: AnswerCard, max_chars: int | None = None
+    reply: str,
+    source_ids: list[str],
+    card: AnswerCard,
+    max_chars: int | None = None,
+    allowed_text: str = "",
 ) -> list[str]:
-    """The reply may only cite the card's sources and use the card's numbers, and must fit
-    the platform's length."""
+    """The reply may only cite the card's sources and must fit the platform's length. Its
+    numbers must come from the card, or from `allowed_text` (the comment, subject and
+    thread): a number quoted from the conversation isn't an invented statistic."""
     if not reply.strip():
         return ["the reply is empty"]
     if max_chars is not None and len(reply.strip()) > max_chars:
@@ -68,7 +73,7 @@ def check_reply(
         for sid in source_ids
         if sid not in allowed_ids
     ]
-    allowed_numbers = numbers_in(_card_text(card))
+    allowed_numbers = numbers_in(_card_text(card)) | numbers_in(allowed_text)
     problems += [
         f"the reply uses the number {n}, which isn't in the card"
         for n in sorted(numbers_in(reply) - allowed_numbers)

@@ -110,6 +110,7 @@ class TestServiceSettings:
         )
         assert (s.rate_limit_per_minute, s.rate_limit_per_day) == (10, 100)
         assert (s.max_comment_chars, s.log_ttl_days) == (1000, 90)
+        assert (s.max_subject_chars, s.max_thread_chars) == (300, 1000)
         assert s.max_tokens == {"classify": 200, "facts": 1000, "reply": 300}
         assert s.cache_max_distance == 0.15
         assert s.excluded_licences == ()
@@ -124,6 +125,8 @@ class TestServiceSettings:
             RATE_LIMIT_PER_MINUTE="3",
             RATE_LIMIT_PER_DAY="30",
             MAX_COMMENT_CHARS="500",
+            MAX_SUBJECT_CHARS="120",
+            MAX_THREAD_CHARS="800",
             LOG_TTL_DAYS="7",
             MAX_TOKENS_CLASSIFY="120",
             MAX_TOKENS_FACTS="600",
@@ -137,6 +140,7 @@ class TestServiceSettings:
         )
         assert (s.rate_limit_per_minute, s.rate_limit_per_day) == (3, 30)
         assert (s.max_comment_chars, s.log_ttl_days) == (500, 7)
+        assert (s.max_subject_chars, s.max_thread_chars) == (120, 800)
         assert s.max_tokens == {"classify": 120, "facts": 600, "reply": 250}
         assert s.cache_max_distance == 0.1
         assert s.client_ip_header == "x-forwarded-for"

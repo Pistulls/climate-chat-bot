@@ -66,3 +66,36 @@ def test_render_report_flags_unexpected_outcome_and_overlength():
 def test_render_report_shows_errors():
     report = render_report([outcome(result=None, error="upstream_error")])
     assert "upstream_error" in report
+
+
+def test_load_cases_with_context(tmp_path: Path):
+    path = tmp_path / "cases.toml"
+    path.write_text(
+        '[[case]]\ncomment = "This"\nexpect = "reply"\nnote = "n"\n'
+        'subject = "A video"\nthread = "CO2 is plant food"\n'
+        '[[case]]\ncomment = "hi"\nexpect = "any"\nnote = "n"\n'
+    )
+    with_context, without = load_cases(path)
+    assert (with_context.subject, with_context.thread) == ("A video", "CO2 is plant food")
+    assert (without.subject, without.thread) == (None, None)
+
+
+def test_repo_cases_include_context():
+    cases = load_cases()
+    assert any(c.subject for c in cases) and any(c.thread for c in cases)
+
+
+def test_report_shows_context():
+    o = outcome(
+        case=Case("lol", "reply", "x", "match", "n", subject="Heat pump video", thread="Scam")
+    )
+    report = render_report([o])
+    assert "Heat pump video" in report and "Scam" in report
+
+
+def test_report_shows_failures():
+    o = outcome(result=None, error="upstream_error")
+    o.trace.failures.append(
+        {"role": "reply", "problems": ["the reply uses the number 12"], "output": "{}"}
+    )
+    assert "the reply uses the number 12" in render_report([o])

@@ -181,6 +181,8 @@ class ServiceSettings:
     rate_limit_per_minute: int
     rate_limit_per_day: int
     max_comment_chars: int
+    max_subject_chars: int
+    max_thread_chars: int
     log_ttl_days: int
     max_tokens: dict[str, int]
     cache_max_distance: float
@@ -237,6 +239,8 @@ def load_service_settings(
         rate_limit_per_minute=positive_int("RATE_LIMIT_PER_MINUTE", 10),
         rate_limit_per_day=positive_int("RATE_LIMIT_PER_DAY", 100),
         max_comment_chars=positive_int("MAX_COMMENT_CHARS", 1000),
+        max_subject_chars=positive_int("MAX_SUBJECT_CHARS", 300),
+        max_thread_chars=positive_int("MAX_THREAD_CHARS", 1000),
         log_ttl_days=positive_int("LOG_TTL_DAYS", 90),
         max_tokens={
             role: positive_int(f"MAX_TOKENS_{role.upper()}", default)

@@ -25,6 +25,8 @@ def log_item(
     now: datetime,
     ttl_days: int,
     request_id: str,
+    subject: str | None = None,
+    thread: str | None = None,
 ) -> dict[str, Any]:
     """`pk` is the UTC day and `sk` the time plus request id, so one day's requests are a
     single partition, in time order."""
@@ -52,6 +54,10 @@ def log_item(
         "calls": calls,
         "cost": sum((c["cost"] for c in calls), Decimal(0)),
     }
+    if subject:
+        entry["subject"] = subject
+    if thread:
+        entry["thread"] = thread
     if trace.claim is not None:
         entry["claim"] = trace.claim
     if trace.cards_category is not None:

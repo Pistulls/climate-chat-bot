@@ -32,6 +32,8 @@ class ChatRequest:
     turnstile_token: str
     platform: str | None
     style: str
+    subject: str | None = None  # what the comment is under (untrusted)
+    thread: str | None = None  # the message it replies to (untrusted)
 
 
 def unavailable() -> ApiError:
@@ -62,8 +64,35 @@ def _bad(message: str) -> ApiError:
     return ApiError(400, "bad_request", message)
 
 
-def parse_request(body: str | None, *, max_chars: int) -> ChatRequest:
-    """Validate the body. Free checks only: the length cap comes before the token check,
+def _clean(text: str) -> str:
+    # NFC, so an accent typed as a separate combining mark counts once.
+    return unicodedata.normalize("NFC", text.strip())
+
+
+def context_field(data: dict[str, Any], field: str, cap: int) -> str | None:
+    """An optional free-text field: absent or blank is None, otherwise capped like the
+    comment."""
+    value = data.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise _bad(f"{field} must be a string.")
+    value = _clean(value)
+    if not value:
+        return None
+    if len(value) > cap:
+        raise ApiError(400, f"{field}_too_long", f"The {field} must be {cap} characters or fewer.")
+    return value
+
+
+def parse_request(
+    body: str | None,
+    *,
+    max_chars: int,
+    max_subject_chars: int = 300,
+    max_thread_chars: int = 1000,
+) -> ChatRequest:
+    """Validate the body. Free checks only: the length caps come before the token check,
     and a missing token is a 403 without any call to Cloudflare."""
     try:
         data = json.loads(body or "")
@@ -75,8 +104,7 @@ def parse_request(body: str | None, *, max_chars: int) -> ChatRequest:
     comment = data.get("comment")
     if not isinstance(comment, str) or not comment.strip():
         raise _bad("comment must be a non-empty string.")
-    # NFC, so an accent typed as a separate combining mark counts once.
-    comment = unicodedata.normalize("NFC", comment.strip())
+    comment = _clean(comment)
 
     style = data.get("style") or "match"
     if style not in STYLES:
@@ -91,8 +119,18 @@ def parse_request(body: str | None, *, max_chars: int) -> ChatRequest:
             400, "comment_too_long", f"The comment must be {max_chars} characters or fewer."
         )
 
+    subject = context_field(data, "subject", max_subject_chars)
+    thread = context_field(data, "thread", max_thread_chars)
+
     token = data.get("turnstile_token")
     if not isinstance(token, str) or not token:
         raise ApiError(403, "turnstile_failed", "The bot check is missing. Please try again.")
 
-    return ChatRequest(comment=comment, turnstile_token=token, platform=platform, style=style)
+    return ChatRequest(
+        comment=comment,
+        turnstile_token=token,
+        platform=platform,
+        style=style,
+        subject=subject,
+        thread=thread,
+    )

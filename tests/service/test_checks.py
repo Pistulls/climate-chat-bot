@@ -112,3 +112,14 @@ def test_card_rejects_long_fallacy():
 def test_card_allows_short_fallacy_or_none():
     assert check_card(card(fallacy="Cherry picking"), RETRIEVED) == []
     assert check_card(card(fallacy=None), RETRIEVED) == []
+
+
+def test_reply_may_repeat_numbers_from_the_conversation():
+    context = "mine barely works below 5C | Our heat pump in a 1930s semi | no warming for 20 years"
+    reply = "For a 1930s semi below 5C, and it isn't 20 years: solar made 7% in 2024."
+    assert check_reply(reply, [], card(), allowed_text=context) == []
+
+
+def test_conversation_numbers_dont_allow_others():
+    problems = check_reply("It's 1930s and 99% sure.", [], card(), allowed_text="1930s semi")
+    assert problems == ["the reply uses the number 99, which isn't in the card"]

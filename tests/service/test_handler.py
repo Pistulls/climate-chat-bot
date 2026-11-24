@@ -26,8 +26,9 @@ class FakePipeline:
     def __init__(self, result=RESULT, error=None):
         self.result, self.error, self.calls = result, error, []
 
-    def run(self, comment, style, platform, trace):
+    def run(self, comment, style, platform, trace, *, subject=None, thread=None):
         self.calls.append((comment, style, platform))
+        self.context = (subject, thread)
         trace.claim = "Solar doesn't work at night"
         trace.calls.append(("classify", ChatResult("{}", "m", 10, 5, 0, 0.0001)))
         if self.error:
@@ -265,3 +266,53 @@ def test_log_hash_key_failure_does_not_fail_request(capsys):
     assert response["statusCode"] == 200
     assert h.table.items[0]["user_hash"] == "unknown"
     assert "user_hash unavailable" in capsys.readouterr().out
+
+
+# --- comment context (plan 05) ---
+
+
+def test_chat_passes_context_and_logs_it():
+    h = Harness()
+    h.call(url_event({**GOOD, "subject": "Heat pump video", "thread": "They don't work"}))
+    assert h.pipeline.context == ("Heat pump video", "They don't work")
+    item = h.table.items[0]
+    assert (item["subject"], item["thread"]) == ("Heat pump video", "They don't work")
+
+
+def test_chat_without_context_passes_none():
+    h = Harness()
+    h.call(url_event(GOOD))
+    assert h.pipeline.context == (None, None)
+    assert "subject" not in h.table.items[0] and "thread" not in h.table.items[0]
+
+
+def test_smoke_event_with_context():
+    h = Harness()
+    response = h.call({"smoke": "it fails in winter", "subject": "  Heat pump video  "})
+    assert response["statusCode"] == 200
+    assert h.pipeline.context == ("Heat pump video", None)
+    assert h.table.items[0]["subject"] == "Heat pump video"
+
+
+def test_smoke_event_over_long_context_is_400():
+    h = Harness()
+    response = h.call({"smoke": "x", "thread": "a" * 1001})
+    assert response["statusCode"] == 400
+    assert h.pipeline.calls == []
+
+
+def test_over_long_thread_is_400_before_turnstile():
+    h = Harness()
+    response = h.call(url_event({**GOOD, "thread": "a" * 1001}))
+    assert response["statusCode"] == 400
+    assert json.loads(response["body"])["error"] == "thread_too_long"
+    assert h.verified == [] and h.pipeline.calls == []
+
+
+def test_context_caps_come_from_settings():
+    from dataclasses import replace
+
+    h = Harness()
+    h.app.settings = replace(h.app.settings, max_subject_chars=5)
+    response = h.call(url_event({**GOOD, "subject": "123456"}))
+    assert json.loads(response["body"])["error"] == "subject_too_long"

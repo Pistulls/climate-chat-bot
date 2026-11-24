@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from climate_chat.config import ServiceSettings, load_service_settings
-from climate_chat.service.api import ApiError, ok_response, parse_request
+from climate_chat.service.api import ApiError, context_field, ok_response, parse_request
 from climate_chat.service.guards import RateLimiter, client_ip, user_hash
 from climate_chat.service.guards import verify_turnstile as real_verify_turnstile
 from climate_chat.service.logs import log_item, write_log
@@ -92,24 +92,36 @@ class App:
         # Direct invoke only: function URL events always carry requestContext.http.
         if isinstance(event.get("smoke"), str) and "requestContext" not in event:
             request_id = getattr(context, "aws_request_id", None) or str(uuid.uuid4())
-            return self._smoke(event["smoke"], request_id)
+            return self._smoke(event, request_id)
         return ApiError(400, "bad_request", "Unsupported event.").to_response()
 
     def _chat(self, event: dict[str, Any], request_id: str) -> dict[str, Any]:
         body = event.get("body")
         if body and event.get("isBase64Encoded"):
             body = base64.b64decode(body).decode("utf-8", errors="replace")
-        state = {"comment": "", "user_hash": ""}
+        state: dict[str, str | None] = {"comment": "", "user_hash": ""}
 
         def run(trace: Trace) -> PipelineResult:
             s = self.settings
-            request = parse_request(body, max_chars=s.max_comment_chars)
-            state["comment"] = request.comment
+            request = parse_request(
+                body,
+                max_chars=s.max_comment_chars,
+                max_subject_chars=s.max_subject_chars,
+                max_thread_chars=s.max_thread_chars,
+            )
+            state.update(comment=request.comment, subject=request.subject, thread=request.thread)
             ip = client_ip(event.get("headers") or {}, s.client_ip_header)
             state["user_hash"] = self._user_hash(ip)
             self.verify_turnstile(request.turnstile_token, self.secrets.turnstile_secret(), ip)
             self.rate_limiter.check(ip, self.now())
-            return self.pipeline().run(request.comment, request.style, request.platform, trace)
+            return self.pipeline().run(
+                request.comment,
+                request.style,
+                request.platform,
+                trace,
+                subject=request.subject,
+                thread=request.thread,
+            )
 
         return self._respond(run, request_id, state)
 
@@ -121,17 +133,26 @@ class App:
             print(f"user_hash unavailable: {type(e).__name__}: {e}")
             return "unknown"
 
-    def _smoke(self, comment: str, request_id: str) -> dict[str, Any]:
-        state = {"comment": comment, "user_hash": SMOKE_USER}
-        return self._respond(
-            lambda trace: self.pipeline().run(comment, "match", None, trace), request_id, state
-        )
+    def _smoke(self, event: dict[str, Any], request_id: str) -> dict[str, Any]:
+        comment = event["smoke"]
+        state: dict[str, str | None] = {"comment": comment, "user_hash": SMOKE_USER}
+
+        def run(trace: Trace) -> PipelineResult:
+            s = self.settings
+            subject = context_field(event, "subject", s.max_subject_chars)
+            thread = context_field(event, "thread", s.max_thread_chars)
+            state.update(subject=subject, thread=thread)
+            return self.pipeline().run(
+                comment, "match", None, trace, subject=subject, thread=thread
+            )
+
+        return self._respond(run, request_id, state)
 
     def _respond(
         self,
         run: Callable[[Trace], PipelineResult],
         request_id: str,
-        state: dict[str, str],
+        state: dict[str, str | None],
     ) -> dict[str, Any]:
         trace, start = Trace(), time.monotonic()
         result: PipelineResult | None = None
@@ -145,8 +166,10 @@ class App:
             error = _internal()
         finally:
             item = log_item(
-                comment=state["comment"],
-                user_hash=state["user_hash"],
+                comment=state["comment"] or "",
+                user_hash=state["user_hash"] or "",
+                subject=state.get("subject"),
+                thread=state.get("thread"),
                 trace=trace,
                 result=result,
                 error_code=error.code if error else None,

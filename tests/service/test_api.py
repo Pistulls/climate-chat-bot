@@ -102,3 +102,56 @@ def test_ok_response():
 def test_length_cap_counts_decomposed_accents_once():
     decomposed = "é" * 1000  # "é" typed as e + combining accent
     assert len(parse(body(comment=decomposed)).comment) == 1000
+
+
+# --- subject and thread (plan 05) ---
+
+
+def test_parse_subject_and_thread():
+    req = parse(body(subject="  YouTube: heat pumps in a UK semi ", thread="Heat pumps are a scam"))
+    assert req.subject == "YouTube: heat pumps in a UK semi"
+    assert req.thread == "Heat pumps are a scam"
+
+
+def test_context_absent_is_none():
+    req = parse(body())
+    assert (req.subject, req.thread) == (None, None)
+
+
+@pytest.mark.parametrize("blank", ["", "   \n", None])
+def test_blank_context_is_none(blank):
+    req = parse(body(subject=blank, thread=blank))
+    assert (req.subject, req.thread) == (None, None)
+
+
+@pytest.mark.parametrize("field", ["subject", "thread"])
+@pytest.mark.parametrize("value", [42, ["a"], {"a": 1}, True])
+def test_context_must_be_string(field, value):
+    err = error_of(body(**{field: value}))
+    assert (err.status, err.code) == (400, "bad_request")
+    assert field in err.message
+
+
+def test_subject_cap_counts_characters():
+    assert parse(body(subject="🌍" * 300)).subject == "🌍" * 300
+    assert parse(body(subject="é" * 300)).subject == "é" * 300
+    err = error_of(body(subject="a" * 301))
+    assert (err.status, err.code) == (400, "subject_too_long")
+
+
+def test_thread_cap():
+    assert parse(body(thread="a" * 1000)).thread == "a" * 1000
+    err = error_of(body(thread="a" * 1001))
+    assert (err.status, err.code) == (400, "thread_too_long")
+
+
+def test_context_caps_are_parameters():
+    assert parse(body(subject="a" * 11)).subject == "a" * 11  # the default cap allows it
+    with pytest.raises(ApiError) as info:
+        parse_request(body(subject="a" * 11), max_chars=1000, max_subject_chars=10)
+    assert info.value.code == "subject_too_long"
+
+
+def test_context_caps_checked_before_token():
+    err = error_of(json.dumps({"comment": "hi", "thread": "a" * 1001}))
+    assert err.code == "thread_too_long"
