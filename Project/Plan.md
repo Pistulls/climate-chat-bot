@@ -8,7 +8,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 |---|---|---|---|
 | 01 | [Infrastructure](Plans/01.Infra.md) | Done | Live at climate-chat.<domain>; CI applies prod on merge to main. Runbook: [Infrastructure/README.md](../Infrastructure/README.md) |
 | 02 | [Ingestion](Plans/02.Ingestion.md) | Done | Python CLI: manifest → extract → chunk → embed → load → eval. The bake-off chose `text-embedding-3-small` (20/20 myths, 0.7 s p95). 1,811 chunks from 28 sources loaded in dev and prod; both live indexes find all 20 test myths. Runbook: [README.md](../README.md#ingestion) |
-| 03 | Python service (`/api/chat`) | Not started | |
+| 03 | [Python service (`/api/chat`)](Plans/03.Service.md) | Not started | Design written, awaiting approval. Ends deployed to the prod Lambda but not public |
 | 04 | Solid UI | Not started | |
 
 Status values: Not started, Planned, In progress, Done.
