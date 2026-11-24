@@ -32,7 +32,7 @@ climate-chat.<domain>  →  CloudFront
                            └─ /api/*  → Lambda function URL (Python service)
 ```
 
-- **UI:** plain **Solid 2 + Vite** single-page app (`solid-js` 2.0.3 and `vite-plugin-solid` 2.11.17 were current on npm on 2026-11-22). SolidStart isn't used, because its value is server rendering and server functions.
+- **UI:** plain **Solid 2 + Vite** single-page app: `solid-js` and `@solidjs/web` (the browser renderer), built with `vite` and `@solidjs/vite-plugin`, as Solid's README installs them. `vite-plugin-solid` is the old Solid 1 plugin, renamed for Solid 2. SolidStart isn't used, because its value is server rendering and server functions.
 - **Packages:** installed with **pnpm**, with install scripts blocked and a minimum release age, so a just-published version isn't installed. **Every package passes a security audit before it's used:** each direct package is vetted (publisher, source repo, provenance, install scripts, what it pulls in) and recorded in Plan.md, and CI runs `pnpm audit` on every build and fails on any known vulnerability. The direct packages are kept to a minimum.
 - **UI deploy:** the UI's own CI workflow builds it and syncs it to the S3 bucket, with long-lived caching for hashed assets and `no-cache` for `index.html`, then invalidates `index.html` in CloudFront. Terraform doesn't touch the content.
 - **One domain:** CloudFront sends `/api/*` to the Lambda function URL, so no CORS setup is needed. The function URL is locked to CloudFront with Origin Access Control (OAC), so direct calls are refused.

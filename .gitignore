@@ -242,3 +242,6 @@ crash.log
 Infrastructure/**/.build/
 # Secret values to push to SSM (Infrastructure/scripts/put-secrets.sh)
 *.local.env
+
+# UI (pnpm); ui/dist is covered by dist/ above
+node_modules/
