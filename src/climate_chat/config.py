@@ -96,6 +96,15 @@ class Settings:
         return session.client(service, **kwargs)
 
 
+def _default_dotenv() -> dict[str, str]:
+    """The repo's .env for local runs. The Lambda has no repo around the code, so none."""
+    try:
+        root = repo_root()
+    except ConfigError:
+        return {}
+    return load_dotenv(root / ".env")
+
+
 class _Get(Protocol):
     def __call__(self, key: str, default: str | None = None) -> str | None: ...
 
@@ -104,7 +113,7 @@ def _reader(
     environ: Mapping[str, str] | None, dotenv_path: Path | None
 ) -> tuple[_Get, Callable[[str], str]]:
     """`get` and `require` over the process environment, falling back to `.env`."""
-    file_values = load_dotenv(dotenv_path or repo_root() / ".env")
+    file_values = load_dotenv(dotenv_path) if dotenv_path else _default_dotenv()
     merged = {**file_values, **(os.environ if environ is None else environ)}
 
     def get(key: str, default: str | None = None) -> str | None:

@@ -37,6 +37,7 @@ climate-chat.<domain>  →  CloudFront
 - **API routes:**
   - `POST /api/chat`: takes `{ comment, turnstile_token, platform?, style? }` and returns `{ reply, citations, fallacy, cached }`. See [Two-stage reply](#two-stage-reply-facts-then-tone) for `platform` and `style`.
   - `GET /api/sources` (optional, not in v1): returns the source list with links for the UI
+- **Every `POST` must send `x-amz-content-sha256`**, the hex SHA-256 of the request body. CloudFront's OAC signs the origin request to the function URL with it and doesn't hash bodies itself; without it the function URL refuses the request with a 403 that has no JSON error code. The UI computes it with `crypto.subtle.digest`.
 - **Errors** are JSON `{ "error": "<code>", "message": "<text>" }`:
 
   | Status | When |
