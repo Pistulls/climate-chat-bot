@@ -1,3 +1,7 @@
+locals {
+  fqdn = "${var.subdomain}.${coalesce(var.domain_name, "unset.invalid")}"
+}
+
 module "hosting" {
   source = "./modules/hosting"
   count  = var.create_hosting ? 1 : 0
@@ -10,7 +14,7 @@ module "hosting" {
   name_prefix = local.name_prefix
   region      = var.region
   account_id  = data.aws_caller_identity.current.account_id
-  fqdn        = "${var.subdomain}.${coalesce(var.domain_name, "unset.invalid")}"
+  fqdn        = local.fqdn
   lambda      = var.lambda
 
   ssm_parameter_names = values(local.ssm_parameters)
@@ -46,6 +50,7 @@ module "hosting" {
     MAX_COMMENT_CHARS      = tostring(var.limits.max_comment_chars)
     LOG_TTL_DAYS           = tostring(var.limits.log_ttl_days)
     CLIENT_IP_HEADER       = "cloudfront-viewer-address"
+    TURNSTILE_HOSTNAMES    = local.fqdn # siteverify's hostname must match
     MAX_TOKENS_CLASSIFY    = tostring(var.service.max_tokens_classify)
     MAX_TOKENS_FACTS       = tostring(var.service.max_tokens_facts)
     MAX_TOKENS_REPLY       = tostring(var.service.max_tokens_reply)
