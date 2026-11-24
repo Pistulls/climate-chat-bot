@@ -1,0 +1,12 @@
+# Supply-chain settings (Project/Plans/04.UI.md, "Packages and the audit").
+# Every direct package is vetted before it's added; see Project/Plan.md, "04. UI".
+
+# Don't install any version published in the last 5 days (in minutes).
+minimumReleaseAge: 7200
+
+# Fail the install if a package's trust level drops from an earlier version
+# (e.g. a release without provenance after releases with it).
+trustPolicy: no-downgrade
+
+# Install scripts: pnpm 12 refuses unreviewed build scripts by default (strictDepBuilds).
+# No package is allowed one, so there is no allowBuilds list.
