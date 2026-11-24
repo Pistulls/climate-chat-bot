@@ -11,6 +11,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 | 03 | [Python service (`/api/chat`)](Plans/03.Service.md) | Done | Plain Lambda handler, no framework or new dependencies. Deployed to the prod Lambda by CI on merge to `main` and smoke-tested; not public until plan 04's UI sends real Turnstile tokens. Cache miss ~$0.0010 in 5–8.6 s, hit ~$0.0003 in 2.3–4.4 s. Runbook: [README.md](../README.md#service) |
 | 04 | [Solid UI](Plans/04.UI.md) | Planned | One-shot page, minimal styling, pnpm with every package audited. Ends working end to end in prod, not launched |
 | 05 | [Comment context (`subject`, `thread`)](Plans/05.Context.md) | Done | Two optional free-text fields, treated as an attack vector, used by Classify and ResponseBot only. Live in prod (PR #9). Showed the heat-pump source gap |
+| 06 | [Embeddings on Amazon Titan V2](Plans/06.Embeddings.md) | Planned | Bedrock in eu-west-2 instead of OpenRouter, after the single ZDR embedding provider failed. 18/20 myths accepted; replace the indexes in place |
 
 Status values: Not started, Planned, In progress, Done.
 
@@ -99,3 +100,10 @@ Status values: Not started, Planned, In progress, Done.
 - **Two fields: `subject`** (what the comment is under) **and `thread`** (the message it replies to). Both are an attack vector, handled like the comment.
 - **Only Classify and ResponseBot see the context.** Facts, the search and the cache work from the restated claim, so cards stay neutral and one card still serves every video.
 - **Replies may quote numbers from the comment, subject and thread.** The number check exists to catch invented statistics, and quoted ones aren't invented. The prompt allows them only as references, never as facts.
+
+### 06. Embeddings
+
+- **Embeddings move to Amazon Titan Text V2 on Bedrock (`eu-west-2`).** The OpenRouter account's zero-data-retention setting left `text-embedding-3-small` with one provider, Azure, and its outage failed every claim. Titan runs inside the AWS account, with the Lambda's IAM role and no API key.
+- **18 of 20 myths is accepted.** The live retrieval test needs at least 18. The two misses ("no warming since 1998", "fuel prices soaring because of climate policies") are a separate follow-up.
+- **The indexes are replaced in place** (approach A). The code merges first, then one Terraform merge, then prod is re-ingested straight away. A few minutes without claims is acceptable before launch.
+- **The model id picks the provider:** `amazon.` ids use Bedrock, everything else OpenRouter. No new setting.

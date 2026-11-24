@@ -312,6 +312,24 @@ def test_model_api_error_is_502():
     assert (info.value.status, info.value.code) == (502, "upstream_error")
 
 
+def test_pipeline_embedding_error_is_502():
+    """A Bedrock (or OpenRouter) embedding failure is the usual 502, and Classify's cost is
+    still in the trace for the log."""
+    from climate_chat.openrouter import EmbeddingError
+
+    class FailingEmbedder:
+        def embed_query(self, text):
+            raise EmbeddingError("Bedrock amazon.titan-embed-text-v2:0: ThrottlingException")
+
+    pipeline, *_ = make()
+    pipeline.embedder = FailingEmbedder()
+    trace = Trace()
+    with pytest.raises(ApiError) as info:
+        pipeline.run("Solar is useless at night", "match", None, trace)
+    assert (info.value.status, info.value.code) == (502, "upstream_error")
+    assert [role for role, _ in trace.calls] == ["classify"]
+
+
 def test_models_and_max_tokens_from_settings():
     pipeline, chat, *_ = make(MAX_TOKENS_FACTS="640", MODEL_FACTS="facts-model")
     run(pipeline)

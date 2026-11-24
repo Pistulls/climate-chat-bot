@@ -98,18 +98,22 @@ Prices are per million tokens (input / output), from OpenRouter's public model l
 | Facts LLM | `anthropic/claude-haiku-5.5` | $0.10 / $0.50 | Best quality in the low-cost tier. Supports structured outputs. |
 | ResponseBot LLM (tone) | `anthropic/claude-haiku-5.5` | $0.10 / $0.50 | Good at matching register in short text. One model for all three roles keeps prompts and testing simple. |
 | Fallback (all three) | `openai/gpt-6-luna` | $0.10 / $0.50 | Same price tier, different vendor, so an Anthropic outage doesn't take the bot down. |
-| Embeddings | `openai/text-embedding-3-small` | $0.02 | Won the retrieval bake-off: all 20 test myths found their sources, with 0.4 s median query latency. |
+| Embeddings | `amazon.titan-embed-text-v2:0`, **on AWS Bedrock in `eu-west-2`**, not OpenRouter | $0.10 | Replaced `openai/text-embedding-3-small` in plan 06, after OpenRouter's only zero-data-retention provider for it (Azure) failed for 45+ minutes. Called with the Lambda's IAM role, so the claim text stays in AWS. 18/20 test myths, 0.08 s median query. |
 
-**Embedding choice: settled by a bake-off** (plan 02, Phase 4). Both candidates embedded the 1,811-chunk corpus, then 20 known myths were searched against each in memory:
+**Embedding choice: settled by two bake-offs** (plan 02, Phase 4, then plan 06). Each candidate embedded the 1,811-chunk corpus, then 20 known myths were searched against each in memory:
 
 | Model | recall@5 | MRR | Query latency p50 / p95 |
 |---|---|---|---|
 | `openai/text-embedding-3-small` (1536-d) | **20/20** | 0.94 | **0.37 s / 0.70 s** |
 | `qwen/qwen3-embedding-8b` (4096-d) | 19/20 | 0.93 | 3.68 s / 12.2 s |
+| **`amazon.titan-embed-text-v2:0`** (1024-d, Bedrock) | 18/20 | 0.91 | **0.08 s / 0.09 s** |
+| `baai/bge-m3` (1024-d) | 18/20 | 0.76 | 0.40 s / 1.06 s |
 
-Qwen3 was ruled out on latency alone: the service embeds every incoming claim inside its 4–6 s reply budget, and its p95 on OpenRouter was over 12 s. Retrieval quality was effectively equal. The smaller vectors also make each S3 Vectors query about 2.7× cheaper, which outweighs the $0.01 per million tokens Qwen3 saves.
+**Plan 06 moved to Titan V2 for availability.** The OpenRouter account allows only zero-data-retention (ZDR) providers, and that left `text-embedding-3-small` with one provider (Azure). When Azure failed, every claim failed. Of OpenRouter's 45 embedding models, only BGE-M3 and Qwen3-8B had two ZDR providers, and neither beat Titan. Titan finds the right source for 2 fewer myths ("no warming since 1998" at rank 10, "fuel prices soaring because of climate policies" at rank 16), which is accepted; the live test needs at least 18/20. It's about 5× faster per query, needs no API key, and its 1024-d vectors make each search about a third cheaper. In London it costs $0.10 per million tokens, about $0.0000015 per reply. This account's Titan quota there is 600 requests and 300,000 tokens per minute, so ingestion runs 2 workers with adaptive retries.
 
-Embeddings cannot use a fallback model. Both indexes must be built and queried with the same model, and changing it means re-embedding everything (cheap at this corpus size).
+In plan 02, Qwen3 was ruled out on latency alone: the service embeds every incoming claim inside its 4–6 s reply budget, and its p95 on OpenRouter was over 12 s. Retrieval quality was effectively equal. The smaller vectors also make each S3 Vectors query about 2.7× cheaper, which outweighs the $0.01 per million tokens Qwen3 saves.
+
+Embeddings cannot use a fallback model. Both indexes must be built and queried with the same model, and changing it means re-embedding everything (cheap at this corpus size). The model id picks the provider: ids starting `amazon.` are called through Bedrock, anything else through OpenRouter. A Bedrock error becomes the same 502 `upstream_error` as an OpenRouter one.
 
 Model IDs live in config (environment variables), not code, so they can change without a deploy. The fallback goes in OpenRouter's `models` list on each request.
 
@@ -124,7 +128,7 @@ Measured in plan 03 (prod logs and the dev reply evaluation, 2026-11-24), with r
 | Call | Tokens in / out (measured) | Cost (measured) |
 |---|---|---|
 | Classify LLM | ~970 in (instructions + comment), ~105 out | ~$0.00015 |
-| Claim embedding | ~15 | under $0.000001 |
+| Claim embedding (Titan V2, Bedrock) | ~15 | about $0.0000015 |
 | Facts LLM (cache miss only) | ~4,500 in (instructions + 5 chunks), 390–610 out | ~$0.00065 |
 | ResponseBot LLM | ~1,000–1,200 in (comment + tone + answer card), 120–200 out | ~$0.00017 |
 | **Total, cache miss** | 3 LLM calls, **5–8.6 s** | **~$0.0010** (about 1,000 replies per $1) |
@@ -251,7 +255,7 @@ The steps run one after another: Classify, then the claim embedding, then the ca
 
 ## Secrets
 
-The secrets are the **OpenRouter API keys** (`prod`, `dev`, `ingest`), the **Cloudflare Turnstile secret key** and the **log-hash key** (see [Request logs](#request-logs)). The Turnstile site key is public and lives in the UI build. The Python service reaches S3 Vectors and DynamoDB through its Lambda IAM role, so no AWS keys are stored anywhere.
+The secrets are the **OpenRouter API keys** (`prod`, `dev`, `ingest`), the **Cloudflare Turnstile secret key** and the **log-hash key** (see [Request logs](#request-logs)). The Turnstile site key is public and lives in the UI build. The Python service reaches S3 Vectors, DynamoDB and Bedrock (embeddings) through its Lambda IAM role, so no AWS keys are stored anywhere.
 
 ### Where they live
 

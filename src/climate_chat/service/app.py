@@ -194,7 +194,8 @@ def build_app(settings: ServiceSettings | None = None) -> App:
     """The real collaborators: OpenRouter, S3 Vectors, DynamoDB and SSM."""
     import boto3
 
-    from climate_chat.openrouter import ChatClient, EmbeddingClient
+    from climate_chat.embeddings import embedding_client
+    from climate_chat.openrouter import ChatClient
     from climate_chat.service.cache import AnswerCache
     from climate_chat.vectors import VectorIndex, s3vectors_client
 
@@ -208,7 +209,9 @@ def build_app(settings: ServiceSettings | None = None) -> App:
     def pipeline_factory(key: str) -> Pipeline:
         return Pipeline(
             chat=ChatClient.from_api_key(key, s.model_fallback),
-            embedder=EmbeddingClient.from_settings(s.base, key),
+            embedder=embedding_client(
+                s.base.model_embedding, s.base.embedding_dimension, settings=s.base, api_key=key
+            ),
             sources=sources,
             cache=cache,
             settings=s,

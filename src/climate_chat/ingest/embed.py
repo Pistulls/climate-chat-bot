@@ -26,6 +26,7 @@ from climate_chat.ingest.chunk import Chunk
 CANDIDATES = {
     "qwen/qwen3-embedding-8b": 4096,
     "openai/text-embedding-3-small": 1536,
+    "amazon.titan-embed-text-v2:0": 1024,  # Bedrock, plan 06
 }
 SAVE_EVERY = 256  # chunks embedded between saves, so a stopped run keeps its progress
 
