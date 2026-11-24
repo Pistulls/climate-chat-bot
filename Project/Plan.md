@@ -8,7 +8,7 @@ Index of project work. The design is in [Design.md](Design.md); each plan lives 
 |---|---|---|---|
 | 01 | [Infrastructure](Plans/01.Infra.md) | Done | Live at climate-chat.<domain>; CI applies prod on merge to main. Runbook: [Infrastructure/README.md](../Infrastructure/README.md) |
 | 02 | [Ingestion](Plans/02.Ingestion.md) | Done | Python CLI: manifest → extract → chunk → embed → load → eval. The bake-off chose `text-embedding-3-small` (20/20 myths, 0.7 s p95). 1,811 chunks from 28 sources loaded in dev and prod; both live indexes find all 20 test myths. Runbook: [README.md](../README.md#ingestion) |
-| 03 | [Python service (`/api/chat`)](Plans/03.Service.md) | Planned | Plain Lambda handler, no framework or new dependencies. Ends deployed to the prod Lambda by CI and smoke-tested, but not public until plan 04 |
+| 03 | [Python service (`/api/chat`)](Plans/03.Service.md) | Done | Plain Lambda handler, no framework or new dependencies. Deployed to the prod Lambda by CI on merge to `main` and smoke-tested; not public until plan 04's UI sends real Turnstile tokens. Cache miss ~$0.0010 in 5–8.6 s, hit ~$0.0003 in 2.3–4.4 s. Runbook: [README.md](../README.md#service) |
 | 04 | Solid UI | Not started | |
 
 Status values: Not started, Planned, In progress, Done.
@@ -69,3 +69,6 @@ Status values: Not started, Planned, In progress, Done.
 - **No `temperature`, reasoning off, schemas enforced.** Phase 0 found neither Haiku 5.5 nor the fallback supports `temperature`. `reasoning: {enabled: false}` stops Haiku's hidden tokens eating the `max_tokens` cap. `require_parameters: true` keeps calls on providers that enforce the JSON schema.
 - **The cache starts strict, at a cosine distance of 0.15.** Even after normalising, different claims (methane vs CO2 "natural rise") can sit closer than rewordings of one claim. A wrong card is worse than a miss, so fewer cache hits are accepted.
 - **Ingestion-only packages move to an `ingest` dependency group** (still installed by default), so the Lambda zip leaves out `pdfplumber` and `tiktoken`.
+- **Comments OpenRouter refuses get a polite fixed reply, not an error.** OpenRouter blocks prompt-injection patterns itself (403). Retrying can't help, so the API returns 200 with "Sorry, I can't reply to that comment." and logs `blocked`.
+- **Every output check is code, retried once with feedback.** Citations, numbers, the platform length and a short `fallacy` label are all checked in code. A failure is retried once, with the failed output and the problems found sent back; a second failure is a 502, and the failures are logged.
+- **Settings come from the environment alone when there's no repo around the code.** The Lambda zip has no `pyproject.toml`; looking for `.env` through it would have failed every cold start.
