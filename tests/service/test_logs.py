@@ -119,3 +119,13 @@ def test_log_item_includes_failures():
 
 def test_log_item_omits_empty_failures():
     assert "failures" not in item()
+
+
+def test_log_item_keeps_context():
+    entry = item(subject="Heat pump video", thread="They don't work")
+    assert (entry["subject"], entry["thread"]) == ("Heat pump video", "They don't work")
+
+
+def test_log_item_omits_missing_context():
+    entry = item()
+    assert "subject" not in entry and "thread" not in entry

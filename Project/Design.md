@@ -167,7 +167,7 @@ A comment often only makes sense next to what it's replying to. Two optional fre
 Both are typed or pasted by the user, and are usually copied from strangers, so **both are treated as an attack vector**, exactly like the comment:
 
 - Trimmed, normalised to NFC and capped (400 if over) before Turnstile; an empty string counts as absent.
-- Only ever placed in the user message, inside their own tags (`<subject>`, `<thread>`). Every untrusted block has **all** of the prompt's tag names defused (`</comment`, `</subject`, `</thread`, `</source`, `</card` → `<\/…`), so no block can close another or fake one.
+- Only ever placed in the user message, inside their own tags (`<subject>`, `<thread>`). Every untrusted block (comment, subject, thread, chunk text, and model output built from them) has **every** prompt tag name defused, opening or closing and in any letter case (`</comment` → `<\/comment`, `<card` → `<\card`), so no block can close another or fake one.
 - Never in a system message, and never allowed to change the rules. The prompts say instructions inside any block are data.
 - OpenRouter's own injection block, and every code check on the outputs, apply as before.
 
@@ -220,7 +220,7 @@ Input: the original comment, the tone profile, the answer card, `style` and `pla
 
 - **Locked to the card's facts.** The prompt forbids new claims, and two code checks enforce it:
   - The reply's `source_ids` must be a subset of the card's.
-  - **Every number in the reply must appear in the answer card** (regex check). This catches made-up statistics.
+  - **Every number in the reply must appear in the answer card, or in the comment, `subject` or `thread`** (regex check). This catches made-up statistics. A number quoted from the conversation ("a 1930s semi", "it isn't 20 years") isn't invented, so it's allowed; the prompt says such numbers may only be referred to, never stated as fact.
 - **Matches register, not hostility.** A casual comment gets a casual reply; a hostile comment gets a calm, firm reply. The bot never insults or mocks the person.
 - **Length set by `platform`:** `x` 280 characters, `youtube` / `facebook` 500. The default is 280. A code check enforces it: a longer reply is retried once, like the other reply checks.
 

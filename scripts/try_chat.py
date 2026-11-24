@@ -2,6 +2,8 @@
 
     uv run python scripts/try_chat.py "Solar is useless at night lol"
     uv run python scripts/try_chat.py "..." --platform x --style neutral
+    uv run python scripts/try_chat.py "mine barely works below 5C" \
+        --subject "YouTube: our heat pump after one UK winter" --thread "..."
     uv run python scripts/try_chat.py "..." --prompts      # also print the messages sent
     uv run python scripts/try_chat.py "..." --use-cache    # read/write the dev response cache
 
@@ -42,6 +44,8 @@ def main() -> None:
     parser.add_argument("comment")
     parser.add_argument("--platform", choices=["x", "youtube", "facebook"])
     parser.add_argument("--style", choices=["match", "neutral"], default="match")
+    parser.add_argument("--subject", help="what the comment is under, e.g. a video title")
+    parser.add_argument("--thread", help="the message the comment replies to")
     parser.add_argument("--prompts", action="store_true", help="print the messages sent")
     parser.add_argument("--use-cache", action="store_true", help="use the dev response cache")
     args = parser.parse_args()
@@ -53,11 +57,19 @@ def main() -> None:
 
     trace = Trace()
     try:
-        result = pipeline.run(args.comment, args.style, args.platform, trace)
+        result = pipeline.run(
+            args.comment,
+            args.style,
+            args.platform,
+            trace,
+            subject=args.subject or None,
+            thread=args.thread or None,
+        )
     except ApiError as e:
         result = None
         print(f"\n!! {e.status} {e.code}: {e.message}")
 
+    print(f"\n=== CLAIM: {trace.claim or '(not a sceptical claim)'}")
     for (role, call), (messages, _) in zip(trace.calls, recorder.log, strict=True):
         print(
             f"\n=== {role} ({call.model}, {call.prompt_tokens} in / "

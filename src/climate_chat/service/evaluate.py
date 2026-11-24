@@ -30,6 +30,8 @@ class Case:
     platform: str | None
     style: str
     note: str
+    subject: str | None = None
+    thread: str | None = None
 
 
 @dataclass(frozen=True)
@@ -56,7 +58,17 @@ def load_cases(path: Path | None = None) -> list[Case]:
         platform, style = entry.get("platform"), entry.get("style", "match")
         if platform not in (None, *PLATFORMS) or style not in STYLES:
             raise ValueError(f"case {n}: bad platform or style")
-        cases.append(Case(entry["comment"], expect, platform, style, entry.get("note", "")))
+        cases.append(
+            Case(
+                entry["comment"],
+                expect,
+                platform,
+                style,
+                entry.get("note", ""),
+                entry.get("subject") or None,
+                entry.get("thread") or None,
+            )
+        )
     return cases
 
 
@@ -89,9 +101,12 @@ def render_report(outcomes: list[Outcome]) -> str:
             f"**Comment** ({o.case.platform or 'default'}, {o.case.style}, expect "
             f"{o.case.expect}): {o.case.comment}",
             "",
-            f"**Claim:** {o.trace.claim or '-'}",
-            "",
         ]
+        if o.case.subject:
+            details += [f"**Subject:** {o.case.subject}", ""]
+        if o.case.thread:
+            details += [f"**Thread:** {o.case.thread}", ""]
+        details += [f"**Claim:** {o.trace.claim or '-'}", ""]
         if o.result:
             details += [
                 f"**Reply** ({len(o.result.reply)}/{limit} chars, fallacy: "
@@ -121,6 +136,9 @@ def render_report(outcomes: list[Outcome]) -> str:
             + (f" ({c.reasoning_tokens} reasoning)" if c.reasoning_tokens else "")
             for role, c in o.trace.calls
         )
+        details += [
+            f"**Failed check ({f['role']}):** {'; '.join(f['problems'])}" for f in o.trace.failures
+        ]
         details += [f"**Calls:** {calls or '-'}", ""]
     lines += [*rows, "", f"Total cost: ${total_cost:.4f}", "", *details]
     return "\n".join(lines)
@@ -140,7 +158,14 @@ def main() -> None:
             trace, start = Trace(), time.monotonic()
             result, error = None, None
             try:
-                result = pipeline.run(case.comment, case.style, case.platform, trace)
+                result = pipeline.run(
+                    case.comment,
+                    case.style,
+                    case.platform,
+                    trace,
+                    subject=case.subject,
+                    thread=case.thread,
+                )
             except ApiError as e:
                 error = e.code
             outcomes.append(Outcome(case, run, result, error, trace, time.monotonic() - start))

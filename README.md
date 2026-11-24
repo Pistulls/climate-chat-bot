@@ -127,9 +127,20 @@ curl -s localhost:8000/api/chat \
   -d '{"comment":"Solar is useless at night","turnstile_token":"XXXX.DUMMY.TOKEN.XXXX","platform":"x"}'
 ```
 
-The body is `{ comment, turnstile_token, platform?, style? }` and the reply is
-`{ reply, citations, fallacy, cached }`. `platform` is `x`, `youtube` or `facebook`;
-`style` is `match` (the default) or `neutral`. Error codes are listed in Design.md.
+The body is `{ comment, turnstile_token, platform?, style?, subject?, thread? }` and the
+reply is `{ reply, citations, fallacy, cached }`. `platform` is `x`, `youtube` or
+`facebook`; `style` is `match` (the default) or `neutral`. `subject` (up to 300 characters:
+what the comment is under, e.g. a video title) and `thread` (up to 1,000: the message it
+replies to) are optional free text that help the bot understand short comments. They're
+treated as untrusted, like the comment. Error codes are listed in Design.md.
+
+To see every step for one comment (the claim, each model call's output and cost, failed
+checks, the reply and citations), without touching the cache:
+
+```bash
+uv run python scripts/try_chat.py "mine barely works below 5C, waste of money" \
+  --subject "YouTube: Our heat pump after one UK winter" --platform youtube [--prompts]
+```
 
 ### Tests and evaluation
 
@@ -137,7 +148,7 @@ The body is `{ comment, turnstile_token, platform?, style? }` and the reply is
 |---|---|---|
 | `uv run pytest` | Unit tests; no network | Free |
 | `uv run pytest -m live` | The 20 myths in `eval/retrieval_myths.toml` through the service's own search, against dev | Under $0.001 |
-| `uv run python -m climate_chat.service.evaluate [--runs 2]` | The comments in `eval/replies.toml`, end to end against dev, written to `build/reports/replies.md` to read by hand | About $0.01 per run |
+| `uv run python -m climate_chat.service.evaluate [--runs 2]` | The comments in `eval/replies.toml` (some with `subject` or `thread`), end to end against dev, written to `build/reports/replies.md` to read by hand, with any failed checks | About $0.01 per run |
 
 The evaluation writes answer cards into the dev `response-cache`. To test prompt changes
 from scratch, empty that index first; cache hits skip the Facts call.
