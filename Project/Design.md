@@ -15,7 +15,7 @@ Working record of decisions made while fleshing out the design. Diagram: StateFl
 |---|---|---|
 | Response Cache | S3 Vectors index, keyed on the embedded **normalised claim**; the style-neutral **answer card** is stored as non-filterable metadata | bucket `climate-chat-vectors`, index `response-cache` |
 | Fact Sources | S3 Vectors index; chunk text, source number and citation URL in metadata | bucket `climate-chat-vectors`, index `sources` |
-| Log Store | DynamoDB on-demand, TTL on log items | table `climate-chat-logs` |
+| Log Store | DynamoDB on-demand, TTL on log items. See [Request logs](#request-logs) | table `climate-chat-logs` |
 | Rate Limits | DynamoDB on-demand, one counter item per IP per time window, TTL expiry | table `climate-chat-ratelimits` |
 
 - Compute: Lambda **outside a VPC** (no NAT Gateway). Static UI on S3 + CloudFront.
@@ -36,16 +36,28 @@ climate-chat.<domain>  →  CloudFront
 - **One domain:** CloudFront sends `/api/*` to the Lambda function URL, so no CORS setup is needed. The function URL is locked to CloudFront with Origin Access Control (OAC), so direct calls are refused.
 - **API routes:**
   - `POST /api/chat`: takes `{ comment, turnstile_token, platform?, style? }` and returns `{ reply, citations, fallacy, cached }`. See [Two-stage reply](#two-stage-reply-facts-then-tone) for `platform` and `style`.
-  - `GET /api/sources` (optional): returns the source list with links for the UI
+  - `GET /api/sources` (optional, not in v1): returns the source list with links for the UI
+- **Errors** are JSON `{ "error": "<code>", "message": "<text>" }`:
+
+  | Status | When |
+  |---|---|
+  | 400 | Bad JSON, an unknown `style` or `platform`, or a comment over the length cap |
+  | 403 | Missing or failed Turnstile token |
+  | 429 | Rate limit reached |
+  | 502 | A model call failed, or its output failed the code checks after one retry |
+  | 503 | The OpenRouter key's credit cap is spent ("can't answer right now") |
+
+- **A comment that isn't a climate-sceptic claim** gets HTTP 200 with a fixed, polite reply, empty `citations` and `fallacy: null`, so the UI handles one success shape.
+- **Smoke test event.** Besides function URL requests, the handler accepts a direct Lambda invoke `{"smoke": "<comment>"}` and runs it through the pipeline from Classify on, skipping Turnstile and the rate limit. Only IAM principals can invoke the function directly: the function URL is locked to CloudFront, and function URL events always carry `requestContext.http`, so a public request can't produce this event. It lets the deployed service be tested end to end without a real Turnstile token.
 - **No streaming:** replies are short (~300 tokens), and Lambda's Python runtime doesn't support response streaming natively. The UI shows a typing indicator while it waits.
 
 ### Abuse protection for the anonymous endpoint
 
-Anyone can call `/api/chat`, and every cache miss costs money. Protection is layered, and almost all of it is free:
+Anyone can call `/api/chat`, and every cache miss costs money. Protection is layered, and almost all of it is free. The service runs the checks in this order, cheapest first, and all of them before any LLM call:
 
-1. **Cloudflare Turnstile check** (planned, free): see below.
-2. **Per-IP rate limit** in the Python service, using counters in the `climate-chat-ratelimits` table (e.g. 10 requests/minute, 100/day). Each counter item expires via TTL.
-3. **Comment length cap** (~1,000 characters), checked before any LLM call.
+1. **Comment length cap** (~1,000 characters). Free and needs no network call.
+2. **Cloudflare Turnstile check** (free): see below.
+3. **Per-IP rate limit** in the Python service, using counters in the `climate-chat-ratelimits` table (e.g. 10 requests/minute, 100/day). There is one item per IP per window (`ip#<ip>#m#<minute>` and `ip#<ip>#d#<day>`), incremented by a conditional `UpdateItem` (`ADD count :1` if `count < limit`); a failed condition is a 429. Each item expires via TTL. The IP comes from the `CloudFront-Viewer-Address` header with the port stripped.
 4. **Lambda reserved concurrency** to cap how many requests run at once.
 5. **OpenRouter key credit cap** as the hard limit on spending.
 
@@ -91,6 +103,8 @@ Embeddings cannot use a fallback model. Both indexes must be built and queried w
 
 Model IDs live in config (environment variables), not code, so they can change without a deploy. The fallback goes in OpenRouter's `models` list on each request.
 
+**Structured output.** Classify and Facts return JSON. They use OpenRouter's JSON-schema `response_format` where both the primary and fallback models support it; otherwise the prompt asks for JSON only, and output that doesn't parse is retried once.
+
 ### Expected cost per reply
 
 | Call | Tokens (approx.) | Cost |
@@ -107,9 +121,9 @@ One-off ingestion, measured in plan 02: 28 sources, 1,811 chunks, 823k tokens of
 ### Cost and abuse controls
 
 - **A credit cap on each OpenRouter key.** Separate keys for `prod`, `dev` and `ingest`. A spent key returns HTTP 402, and the bot replies "can't answer right now".
-- Strict `max_tokens` (classify ~150, facts ~500, reply ~200) and low temperature.
+- `max_tokens` on every call, to cap the output length and cost, and low temperature. The values are config and are tuned by testing. Starting points: classify ~150, facts ~500, reply ~200. Haiku reasons with about 300 hidden tokens before it answers, and those count against `max_tokens`. A cap that's too small returns an empty reply, so testing must check reasoning as well as answer length.
 - API key stored as an SSM Parameter Store SecureString (free tier), not Secrets Manager.
-- Token usage and cost from each response's `usage` field written to `climate-chat-logs`.
+- Token usage and cost from each response's `usage` field written to `climate-chat-logs` (see [Request logs](#request-logs)).
 - Provider routing set to deny data collection and prefer providers that don't retain data.
 
 ## Two-stage reply: facts, then tone
@@ -132,7 +146,7 @@ comment ─► Classify LLM ─► normalised claim + CARDS category + tone prof
 
 One call returns:
 
-- **Verdict:** is it a climate claim, and does it present a sceptical view? If not, no further LLM calls are made.
+- **Verdict:** is it a climate claim, and does it present a sceptical view? If not, no further LLM calls are made, and the API returns the fixed not-a-claim reply.
 - **`cards_category`:** the claim's category in the CARDS taxonomy (Coan et al. 2021).
 - **`claim`:** the comment restated as one neutral sentence, e.g. "Solar is pointless because it doesn't generate at night".
 - **`tone`:** register (casual / formal), hostility (none / mild / hostile), emoji and slang use, language.
@@ -141,7 +155,7 @@ One call returns:
 
 ### 2. Facts LLM (cache miss only)
 
-Input: the claim plus the retrieved source chunks. Output: a style-neutral **answer card**:
+Input: the claim plus the top 5 retrieved source chunks. Output: a style-neutral **answer card**:
 
 ```json
 { "claim": "...", "cards_category": "...", "fallacy": "...",
@@ -152,6 +166,7 @@ Input: the claim plus the retrieved source chunks. Output: a style-neutral **ans
 - Key points follow the Debunking Handbook 2020 order: **fact → warning → fallacy → fact**.
 - **Citation check in code:** every `source_id` must be one of the retrieved chunks, or the card is rejected.
 - The answer card is what goes into the cache, so one card serves every future wording of the claim.
+- **Source licences.** Every chunk carries a filterable `licence` value. The `EXCLUDED_LICENCES` setting (comma-separated, empty by default) adds a `licence` `$nin` filter to the Facts Search, so which sources may be quoted is a config change, not a code change. Which licences to exclude is still open; it must be decided before launch.
 
 ### 3. ResponseBot LLM (every reply)
 
@@ -176,11 +191,11 @@ Input: the original comment, the tone profile, the answer card, `style` and `pla
 
 ### Speed
 
-The claim embedding starts as soon as Classify returns, and the cache lookup and Facts Search run in parallel. If the cache hits, the Facts Search result is thrown away.
+The steps run one after another: Classify, then the claim embedding, then the cache lookup. The Facts Search only runs on a cache miss, so a hit makes no wasted query.
 
 ## Secrets
 
-The secrets are the **OpenRouter API keys** (`prod`, `dev`, `ingest`) and the **Cloudflare Turnstile secret key**. The Turnstile site key is public and lives in the UI build. The Python service reaches S3 Vectors and DynamoDB through its Lambda IAM role, so no AWS keys are stored anywhere.
+The secrets are the **OpenRouter API keys** (`prod`, `dev`, `ingest`), the **Cloudflare Turnstile secret key** and the **log-hash key** (see [Request logs](#request-logs)). The Turnstile site key is public and lives in the UI build. The Python service reaches S3 Vectors and DynamoDB through its Lambda IAM role, so no AWS keys are stored anywhere.
 
 ### Where they live
 
@@ -193,6 +208,8 @@ Secrets Manager was not chosen. It costs $0.40 per secret per month plus API cha
 | `/climate-chat/prod/openrouter-api-key` | Python service (Lambda) |
 | `/climate-chat/dev/openrouter-api-key` | Shared dev copy. Local development reads the key from a gitignored `.env` |
 | `/climate-chat/prod/turnstile-secret-key` | Python service (Lambda) |
+| `/climate-chat/prod/log-hash-key` | Python service (Lambda) |
+| `/climate-chat/dev/log-hash-key` | Shared dev copy. Local development reads it from `.env` |
 | `/climate-chat/ingest/openrouter-api-key` | Ingestion script, using your own AWS credentials (or a GitHub Actions OIDC role if run in CI) |
 
 ### Rules
@@ -204,7 +221,7 @@ Secrets Manager was not chosen. It costs $0.40 per secret per month plus API cha
    ```
 
 2. **No secrets in Lambda environment variables.** They are visible in the console and in Terraform state. The service reads the key with boto3 (`get_parameter`, `WithDecryption=True`) when it starts, and caches it in memory for about 5 minutes.
-3. **Least-privilege IAM.** The Lambda role gets `ssm:GetParameter` on the two prod parameters' ARNs only, plus `kms:Decrypt` on the `aws/ssm` key.
+3. **Least-privilege IAM.** The Lambda role gets `ssm:GetParameter` on the three prod parameters' ARNs only, plus `kms:Decrypt` on the `aws/ssm` key.
 
 ### Rotating a key and limiting damage
 
@@ -215,4 +232,21 @@ Secrets Manager was not chosen. It costs $0.40 per secret per month plus API cha
 
 ## Response cache writes
 
+**A lookup hits** when the nearest cached claim (top 1) is within `CACHE_MAX_DISTANCE` (cosine distance, config). The value is tuned by testing with paraphrases of the same claim (casual, formal, with emoji): close enough to match rewordings, not so loose that different claims share a card.
+
 **Answer cards** (not toned replies) are **written straight into the `response-cache` index**, with no review step. The vector is the embedding of the normalised claim. Only cards that pass the citation check are written. `confidence` and `cards_category` are stored as filterable metadata, so weak entries can be found and removed later.
+
+## Request logs
+
+Each `/api/chat` request writes one item to `climate-chat-logs`, expiring after `LOG_TTL_DAYS` (90) via TTL. It holds the comment, the normalised claim, the CARDS category, whether the cache hit, the outcome (reply, not-a-claim, or the error code), and the model, tokens and cost of each call, plus the total latency.
+
+**No IP address is logged.** The raw IP appears only in the rate-limit keys, which expire within a day. To see whether a few users generate most of the traffic (for example, one user making 90% of requests), each item has a `user_hash` instead:
+
+```
+user_hash = HMAC-SHA256(log-hash key, "<YYYY-MM>|<ip>"), hex, first 16 characters
+```
+
+- **Keyed, not a plain hash.** The IPv4 space is small enough to reverse a plain hash by trying every address.
+- **The month is in the input**, so ids group a user's requests within a calendar month but don't link across months. That suits monthly concentration checks and keeps the data closer to anonymous.
+- **An IP is a network, not a person.** Mobile carriers and offices share IPs, and one person changes networks, so this measures concentration by network. That's enough to spot one heavy source.
+- Concentration is checked with a scan of the table grouped by `user_hash`.
