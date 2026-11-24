@@ -1,0 +1,120 @@
+name: Service
+
+# Tests every change to the Python service. On main, also builds the Lambda zip, deploys
+# it to climate-chat-prod-api and checks the public path end to end.
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "eval/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "scripts/build_lambda.sh"
+      - ".github/workflows/service.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "scripts/build_lambda.sh"
+      - ".github/workflows/service.yml"
+  workflow_dispatch: {}
+
+# Least privilege for GITHUB_TOKEN; id-token lets the deploy job request the OIDC token.
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  UV_VERSION: 0.12.23 # match local
+  FUNCTION_NAME: climate-chat-prod-api
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # uv from PyPI with pipx (preinstalled on GitHub runners), so no extra action.
+      - name: Install uv
+        run: pipx install "uv==${UV_VERSION}"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check src tests
+
+      # Unit tests only: live tests (-m live) need OpenRouter and the dev AWS stores.
+      - name: Test
+        run: uv run pytest -q
+
+  # Builds on Linux arm64 like the Lambda, so the zip's compiled wheels can be imported
+  # here before anything is deployed. Runs on PRs too, to catch packaging mistakes early.
+  package:
+    needs: test
+    runs-on: ubuntu-24.04-arm
+    concurrency:
+      group: ${{ github.event_name == 'push' && 'service-prod' || format('service-{0}', github.ref) }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv and Python 3.14
+        run: pipx install "uv==${UV_VERSION}" && uv python install 3.14
+
+      - name: Build the Lambda zip
+        run: scripts/build_lambda.sh
+
+      - name: Import the handler from the unzipped package
+        run: |
+          mkdir -p /tmp/lambda && unzip -q build/lambda/climate-chat-api.zip -d /tmp/lambda
+          cd /tmp/lambda
+          uv run --no-project --python 3.14 python -I -c "
+          import sys; sys.path.insert(0, '.')
+          import handler, climate_chat.service.app, climate_chat.service.pipeline
+          import numpy, openai, boto3
+          print('handler imports OK on', sys.platform, sys.version.split()[0])
+          "
+
+      # --- Deploy: pushes to main only ---
+
+      # Public repo, public logs: the role ARN is a secret (so masked), and the account ID
+      # is masked wherever it appears.
+      - name: AWS credentials
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-2
+          mask-aws-account-id: true
+
+      - name: Deploy the code
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          aws lambda update-function-code --function-name "$FUNCTION_NAME" \
+            --zip-file fileb://build/lambda/climate-chat-api.zip \
+            --query '{Version: Version, CodeSize: CodeSize, State: LastUpdateStatus}' --output table
+          aws lambda wait function-updated-v2 --function-name "$FUNCTION_NAME"
+
+      # Without a Turnstile token the service must answer 403 turnstile_failed. That proves
+      # CloudFront -> OAC -> Lambda works, the new code imports and starts, and it reads its
+      # settings and the Turnstile secret. Anything else (e.g. 502 import error, 503
+      # placeholder, 403 from OAC with no JSON code) fails the job. The payload hash header
+      # is required by OAC for POST bodies (Infrastructure/README.md).
+      - name: Smoke check (no token gives 403)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        run: |
+          body='{"comment":"CI smoke check: solar does not work at night"}'
+          hash=$(printf %s "$body" | sha256sum | cut -d' ' -f1)
+          status=$(curl -s -o response.json -w '%{http_code}' \
+            -X POST "https://climate-chat.${DOMAIN_NAME}/api/chat" \
+            -H 'content-type: application/json' -H "x-amz-content-sha256: ${hash}" \
+            --data "$body")
+          echo "HTTP $status: $(cat response.json)"
+          test "$status" = 403
+          python3 -c "import json; assert json.load(open('response.json'))['error'] == 'turnstile_failed'"
