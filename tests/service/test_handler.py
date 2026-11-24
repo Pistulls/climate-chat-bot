@@ -81,8 +81,9 @@ class Harness:
             self.built_with.append(key)
             return self.pipeline
 
-        def verify(token, secret, ip):
+        def verify(token, secret, ip, *, hostnames):
             self.verified.append((token, secret, ip))
+            self.hostnames = hostnames
             if turnstile_error:
                 raise turnstile_error
 
@@ -134,6 +135,7 @@ def test_chat_happy_path():
     }
     assert h.pipeline.calls == [("lol solar is useless at night", "match", "x")]
     assert h.verified == [("tok", "ts", "203.0.113.9")]
+    assert h.hostnames == ("climate-chat.example.org",)
     assert h.rate.calls == ["203.0.113.9"]
 
 

@@ -86,6 +86,7 @@ SERVICE = {
     "MODEL_FACTS": "anthropic/claude-haiku-5.5",
     "MODEL_REPLY": "anthropic/claude-haiku-5.5",
     "MODEL_FALLBACK": "openai/gpt-6-luna",
+    "TURNSTILE_HOSTNAMES": "example.com",
 }
 
 
@@ -168,6 +169,18 @@ class TestServiceSettings:
     def test_service_settings_rejects_bad_numbers(self, key, value):
         with pytest.raises(ConfigError, match=key):
             service_settings(**{key: value})
+
+    @pytest.mark.parametrize("value", [None, "", " , "])
+    def test_service_settings_requires_turnstile_hostnames(self, value):
+        """An empty allowlist would accept tokens from any site, so refuse to start."""
+        environ = {} if value is None else {"TURNSTILE_HOSTNAMES": value}
+        drop = ("TURNSTILE_HOSTNAMES",) if value is None else ()
+        with pytest.raises(ConfigError, match="TURNSTILE_HOSTNAMES"):
+            service_settings(drop=drop, **environ)
+
+    def test_turnstile_hostnames_parsed(self):
+        s = service_settings(TURNSTILE_HOSTNAMES=" climate-chat.example.org, Example.COM ,")
+        assert s.turnstile_hostnames == ("climate-chat.example.org", "example.com")
 
     def test_prod_param_names_follow_app_env(self):
         s = service_settings(APP_ENV="prod")

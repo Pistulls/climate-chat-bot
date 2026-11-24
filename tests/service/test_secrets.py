@@ -13,6 +13,7 @@ ENV = {
     "MODEL_REPLY": "m",
     "MODEL_FALLBACK": "f",
     "APP_ENV": "prod",
+    "TURNSTILE_HOSTNAMES": "climate-chat.example.org",
 }
 
 
