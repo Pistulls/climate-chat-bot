@@ -23,6 +23,7 @@ import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from botocore.exceptions import (
     ClientError,
@@ -32,6 +33,7 @@ from botocore.exceptions import (
 )
 
 from climate_chat.config import ConfigError, load_settings, repo_root
+from climate_chat.embeddings import embedding_client, uses_bedrock
 from climate_chat.ingest import chunk as chunking
 from climate_chat.ingest import embed as embedding
 from climate_chat.ingest import evaluate as evaluation
@@ -45,7 +47,7 @@ from climate_chat.ingest.manifest import (
     missing_files,
     to_ingest,
 )
-from climate_chat.openrouter import CreditCapReached, EmbeddingClient, resolve_ingest_api_key
+from climate_chat.openrouter import EmbeddingError, resolve_ingest_api_key
 from climate_chat.vectors import VectorIndex
 
 
@@ -107,10 +109,12 @@ def _read_chunks(sources: Sequence[Source], build: Path) -> list[chunking.Chunk]
     return [c for s in sources for c in chunking.read_chunks(build / "chunks" / f"{s.id}.jsonl")]
 
 
-def _client(model: str) -> EmbeddingClient:
+def _client(model: str) -> Any:
+    """Titan (`amazon.`) uses your AWS credentials; other models the OpenRouter ingest key."""
     settings = load_settings()
-    return EmbeddingClient.for_model(
-        model, embedding.CANDIDATES[model], resolve_ingest_api_key(settings)
+    api_key = None if uses_bedrock(model) else resolve_ingest_api_key(settings)
+    return embedding_client(
+        model, embedding.CANDIDATES[model], settings=settings, api_key=api_key, for_ingest=True
     )
 
 
@@ -133,7 +137,7 @@ def run_embed(sources: Sequence[Source], build: Path, args: argparse.Namespace) 
                 client.embed_documents,
                 save=lambda s, d=directory: embedding.save_store(d, s),
             )
-        except CreditCapReached as e:
+        except EmbeddingError as e:  # includes a spent OpenRouter cap and Bedrock errors
             print(f"{model}: {e}. Progress so far is saved; re-run to resume.", file=sys.stderr)
             return 1
         print(

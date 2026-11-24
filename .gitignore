@@ -245,3 +245,6 @@ Infrastructure/**/.build/
 
 # UI (pnpm); ui/dist is covered by dist/ above
 node_modules/
+
+# macOS
+.DS_Store
