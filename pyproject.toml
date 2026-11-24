@@ -33,7 +33,9 @@ build-backend = "uv_build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra -m 'not live'"
+# Live tests call OpenRouter and the dev AWS stores: uv run pytest -m live
+markers = ["live: calls real services (OpenRouter, dev AWS); skipped unless -m live"]
 
 [tool.ruff]
 line-length = 100

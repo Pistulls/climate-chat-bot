@@ -254,3 +254,11 @@ class TestChatClient:
             "m", MESSAGES, max_tokens=150, schema=SCHEMA
         )
         assert result.text == ""
+
+
+def test_complete_maps_403_to_content_blocked():
+    from climate_chat.openrouter import ContentBlocked
+
+    fake = FakeCompletions(error=status_error(403))
+    with pytest.raises(ContentBlocked):
+        chat(fake).complete("m", MESSAGES, max_tokens=150, schema=SCHEMA)

@@ -37,6 +37,11 @@ class CreditCapReached(EmbeddingError):
     """HTTP 402: this OpenRouter key's credit cap is spent. Retrying won't help."""
 
 
+class ContentBlocked(Exception):
+    """OpenRouter refused the request (HTTP 403), e.g. "prompt injection patterns
+    detected". Retrying the same text won't help."""
+
+
 def query_text(model: str, text: str) -> str:
     """The query as the model expects it. Only Qwen3 embeddings use an instruction."""
     if model.startswith("qwen/qwen3-embedding"):
@@ -177,6 +182,8 @@ class ChatClient:
                 raise CreditCapReached(
                     "OpenRouter returned 402: this key's credit cap is spent"
                 ) from e
+            if e.status_code == 403:
+                raise ContentBlocked(str(e)) from e
             raise
 
         usage = response.usage

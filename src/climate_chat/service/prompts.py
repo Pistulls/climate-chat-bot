@@ -91,8 +91,9 @@ Rules:
 - Order the key points as the Debunking Handbook 2020 advises: the core fact first, then a
   warning that a myth follows, then the fallacy in the claim, then the core fact again.
   Two to four key points.
-- fallacy: the reasoning error in the claim (e.g. cherry picking, oversimplification,
-  false dichotomy, fake expert), or null if there isn't a clear one.
+- fallacy: the name of the reasoning error in the claim, at most four words (e.g. "Cherry
+  picking", "Oversimplification", "False dichotomy", "Fake experts"), or null if there
+  isn't a clear one. A name only, no explanation.
 - bottom_line: one sentence a reader should remember.
 - confidence: 0 to 1, how fully the passages answer the claim. Use under 0.5 if they only
   partly address it."""
@@ -154,7 +155,8 @@ Rules:
 - Never insult, mock or talk down to the person. Address the claim, not them.
 - {style}
 - Write in the comment's language ({language}).
-- At most {length} characters. Lead with the most important fact.
+- At most {length} characters, counting spaces; aim for about {target}. Lead with the
+  most important fact.
 - source_ids: the card's source ids your reply relies on."""
 
 REPLY_SCHEMA: dict[str, Any] = {
@@ -172,7 +174,10 @@ def reply_messages(
     comment: str, tone: Tone, card: AnswerCard, style: str, platform: str | None
 ) -> list[dict[str, str]]:
     system = REPLY_SYSTEM.format(
-        style=STYLE_RULES[style], language=tone.language, length=reply_length(platform)
+        style=STYLE_RULES[style],
+        language=tone.language,
+        length=reply_length(platform),
+        target=int(round(reply_length(platform) * 0.85, -1)),
     )
     tone_json = json.dumps(tone.__dict__, ensure_ascii=False)
     card_json = json.dumps(card.to_dict(), ensure_ascii=False)

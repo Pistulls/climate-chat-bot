@@ -87,3 +87,10 @@ def test_schemas_are_strict():
 
 def test_facts_schema_matches_answer_card():
     assert set(FACTS_SCHEMA["properties"]) == set(CARD)
+
+
+def test_reply_prompt_aims_under_the_limit():
+    card = AnswerCard.from_dict(CARD)
+    system = reply_messages("lol", TONE, card, "match", "x")[0]["content"]
+    assert "at most 280 characters" in system.lower()
+    assert "aim for about 240." in system.lower()

@@ -110,7 +110,7 @@ class TestServiceSettings:
         )
         assert (s.rate_limit_per_minute, s.rate_limit_per_day) == (10, 100)
         assert (s.max_comment_chars, s.log_ttl_days) == (1000, 90)
-        assert s.max_tokens == {"classify": 150, "facts": 1000, "reply": 200}
+        assert s.max_tokens == {"classify": 200, "facts": 1000, "reply": 300}
         assert s.cache_max_distance == 0.15
         assert s.excluded_licences == ()
         assert s.client_ip_header == "cloudfront-viewer-address"
@@ -168,3 +168,9 @@ class TestServiceSettings:
     def test_prod_param_names_follow_app_env(self):
         s = service_settings(APP_ENV="prod")
         assert s.log_hash_key_param == "/climate-chat/prod/log-hash-key"
+
+
+def test_tuned_max_tokens_defaults():
+    from climate_chat.config import DEFAULT_MAX_TOKENS
+
+    assert DEFAULT_MAX_TOKENS == {"classify": 200, "facts": 1000, "reply": 300}

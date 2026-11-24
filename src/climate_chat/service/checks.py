@@ -31,9 +31,15 @@ def _card_text(card: AnswerCard) -> str:
     return "\n".join(parts)
 
 
+MAX_FALLACY_WORDS = 4
+
+
 def check_card(card: AnswerCard, retrieved_ids: set[str]) -> list[str]:
-    """Every key point must cite at least one chunk, and only chunks that were retrieved."""
+    """Every key point must cite at least one chunk, and only chunks that were retrieved.
+    The fallacy is a short label the UI can show, not an explanation."""
     problems = []
+    if card.fallacy and len(card.fallacy.split()) > MAX_FALLACY_WORDS:
+        problems.append(f"the fallacy is more than {MAX_FALLACY_WORDS} words")
     if not card.key_points:
         problems.append("the card has no key points")
     for n, kp in enumerate(card.key_points, 1):
@@ -47,10 +53,15 @@ def check_card(card: AnswerCard, retrieved_ids: set[str]) -> list[str]:
     return problems
 
 
-def check_reply(reply: str, source_ids: list[str], card: AnswerCard) -> list[str]:
-    """The reply may only cite the card's sources and use the card's numbers."""
+def check_reply(
+    reply: str, source_ids: list[str], card: AnswerCard, max_chars: int | None = None
+) -> list[str]:
+    """The reply may only cite the card's sources and use the card's numbers, and must fit
+    the platform's length."""
     if not reply.strip():
         return ["the reply is empty"]
+    if max_chars is not None and len(reply.strip()) > max_chars:
+        return [f"the reply is longer than {max_chars} characters"]
     allowed_ids = set(card.source_ids)
     problems = [
         f"the reply cites {sid}, which isn't in the card"

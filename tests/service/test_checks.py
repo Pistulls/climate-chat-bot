@@ -93,3 +93,22 @@ def test_reply_rejects_empty():
 
 def test_reply_may_cite_nothing():
     assert check_reply("Storage helps at night.", [], card()) == []
+
+
+def test_reply_rejects_over_length():
+    problems = check_reply("Storage helps. " * 20, [], card(), max_chars=280)
+    assert any("280" in p for p in problems)
+
+
+def test_reply_at_length_limit_passes():
+    assert check_reply("a" * 280, [], card(), max_chars=280) == []
+
+
+def test_card_rejects_long_fallacy():
+    long = card(fallacy="Oversimplification and cherry picking: the claim treats natural CO2")
+    assert any("fallacy" in p for p in check_card(long, RETRIEVED))
+
+
+def test_card_allows_short_fallacy_or_none():
+    assert check_card(card(fallacy="Cherry picking"), RETRIEVED) == []
+    assert check_card(card(fallacy=None), RETRIEVED) == []

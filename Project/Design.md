@@ -50,6 +50,7 @@ climate-chat.<domain>  →  CloudFront
   | 503 | The OpenRouter key's credit cap is spent ("can't answer right now") |
 
 - **A comment that isn't a climate-sceptic claim** gets HTTP 200 with a fixed, polite reply, empty `citations` and `fallacy: null`, so the UI handles one success shape.
+- **A comment OpenRouter refuses** (HTTP 403, e.g. "prompt injection patterns detected") gets the same shape with the fixed reply "Sorry, I can't reply to that comment.", logged with outcome `blocked`. Retrying wouldn't help, so it isn't an error.
 - **Smoke test event.** Besides function URL requests, the handler accepts a direct Lambda invoke `{"smoke": "<comment>"}` and runs it through the pipeline from Classify on, skipping Turnstile and the rate limit. Only IAM principals can invoke the function directly: the function URL is locked to CloudFront, and function URL events always carry `requestContext.http`, so a public request can't produce this event. It lets the deployed service be tested end to end without a real Turnstile token.
 - **No streaming:** replies are short (~300 tokens), and Lambda's Python runtime doesn't support response streaming natively. The UI shows a typing indicator while it waits.
 
@@ -125,7 +126,7 @@ One-off ingestion, measured in plan 02: 28 sources, 1,811 chunks, 823k tokens of
 ### Cost and abuse controls
 
 - **A credit cap on each OpenRouter key.** Separate keys for `prod`, `dev` and `ingest`. A spent key returns HTTP 402, and the bot replies "can't answer right now".
-- `max_tokens` on every call, to cap the output length and cost. The values are config and are tuned by testing. Starting points: classify ~150, facts ~1000, reply ~200. A Facts card measured 450–530 output tokens, so a cap of 500 cut it off mid-JSON (plan 03, Phase 3).
+- `max_tokens` on every call, to cap the output length and cost. The values are config and are tuned by testing. **Current: classify 200, facts 1000, reply 300.** Measured in plan 03 (Phase 4, 52 calls) with reasoning off: classify at most 118 output tokens, facts at most 613, reply at most 198. Design.md's first guesses (150 / 500 / 200) cut Facts cards off mid-JSON and left Reply no margin.
 - **Reasoning off** (`reasoning: {enabled: false}`) on every call. With reasoning on, Haiku spent 0–114 hidden tokens per call, which count against `max_tokens`: at 150 the answer was cut off, and `reasoning: {max_tokens: 0}` used the whole cap on reasoning and returned nothing. With it off, 21 of 21 calls used no reasoning tokens and Classify took 0.6–1.8 s. Whether Facts writes better cards with reasoning on is checked when tuning.
 - API key stored as an SSM Parameter Store SecureString (free tier), not Secrets Manager.
 - Token usage and cost from each response's `usage` field written to `climate-chat-logs` (see [Request logs](#request-logs)).
@@ -170,6 +171,7 @@ Input: the claim plus the top 5 retrieved source chunks. Output: a style-neutral
 
 - Key points follow the Debunking Handbook 2020 order: **fact → warning → fallacy → fact**.
 - **Citation check in code:** every `source_id` must be one of the retrieved chunks, or the card is rejected.
+- **`fallacy` is a short label** (at most four words, e.g. "Cherry picking"), or null, because the API returns it for the UI to show. A longer one fails the card check.
 - The answer card is what goes into the cache, so one card serves every future wording of the claim.
 - **Source licences.** Every chunk carries a filterable `licence` value. The `EXCLUDED_LICENCES` setting (comma-separated, empty by default) adds a `licence` `$nin` filter to the Facts Search, so which sources may be quoted is a config change, not a code change. Which licences to exclude is still open; it must be decided before launch.
 
@@ -181,7 +183,7 @@ Input: the original comment, the tone profile, the answer card, `style` and `pla
   - The reply's `source_ids` must be a subset of the card's.
   - **Every number in the reply must appear in the answer card** (regex check). This catches made-up statistics.
 - **Matches register, not hostility.** A casual comment gets a casual reply; a hostile comment gets a calm, firm reply. The bot never insults or mocks the person.
-- **Length set by `platform`:** `x` ~280 characters, `youtube` / `facebook` ~500. The default is short.
+- **Length set by `platform`:** `x` 280 characters, `youtube` / `facebook` 500. The default is 280. A code check enforces it: a longer reply is retried once, like the other reply checks.
 
 ### Styles
 
@@ -193,6 +195,10 @@ Input: the original comment, the tone profile, the answer card, `style` and `pla
 | `neutral`: plain and factual | Now |
 | `casual`: "LOL, …" | Later |
 | `sarcastic` | Later. Sarcasm targets the argument, never the person, and uses no profanity |
+
+### Retries
+
+A model call whose output doesn't parse, or fails its code check (citations, numbers, length, fallacy label), is retried **once**. The retry sends the failed output back with the list of problems, so the model can correct it rather than guess again. A second failure is a 502. Every attempt's tokens and cost are logged.
 
 ### Speed
 
