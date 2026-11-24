@@ -60,7 +60,7 @@ class App:
         pipeline_factory: Callable[[str], _Pipeline],
         rate_limiter: Any,
         log_table: Any,
-        verify_turnstile: Callable[[str, str, str], None] = real_verify_turnstile,
+        verify_turnstile: Callable[..., None] = real_verify_turnstile,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ):
         self.settings = settings
@@ -112,7 +112,12 @@ class App:
             state.update(comment=request.comment, subject=request.subject, thread=request.thread)
             ip = client_ip(event.get("headers") or {}, s.client_ip_header)
             state["user_hash"] = self._user_hash(ip)
-            self.verify_turnstile(request.turnstile_token, self.secrets.turnstile_secret(), ip)
+            self.verify_turnstile(
+                request.turnstile_token,
+                self.secrets.turnstile_secret(),
+                ip,
+                hostnames=s.turnstile_hostnames,
+            )
             self.rate_limiter.check(ip, self.now())
             return self.pipeline().run(
                 request.comment,

@@ -58,9 +58,13 @@ class FakeResponse(io.BytesIO):
         return False
 
 
+HOSTS = ("climate-chat.example.org",)
+PASS = {"success": True, "hostname": "climate-chat.example.org", "action": "chat"}
+
+
 class FakeUrlopen:
     def __init__(self, payload=None, status=200, error=None):
-        self.payload = payload if payload is not None else {"success": True}
+        self.payload = payload if payload is not None else dict(PASS)
         self.status, self.error = status, error
         self.requests = []
 
@@ -72,13 +76,13 @@ class FakeUrlopen:
 
 
 def test_turnstile_success():
-    verify_turnstile("tok", "secret", "203.0.113.9", urlopen=FakeUrlopen())
+    verify_turnstile("tok", "secret", "203.0.113.9", hostnames=HOSTS, urlopen=FakeUrlopen())
 
 
 def test_turnstile_failure_is_403():
     fake = FakeUrlopen({"success": False, "error-codes": ["invalid-input-response"]})
     with pytest.raises(ApiError) as info:
-        verify_turnstile("tok", "secret", "203.0.113.9", urlopen=fake)
+        verify_turnstile("tok", "secret", "203.0.113.9", hostnames=HOSTS, urlopen=fake)
     assert (info.value.status, info.value.code) == (403, "turnstile_failed")
 
 
@@ -88,14 +92,18 @@ def test_turnstile_failure_is_403():
 )
 def test_turnstile_unreachable_is_503(error):
     with pytest.raises(ApiError) as info:
-        verify_turnstile("tok", "secret", "203.0.113.9", urlopen=FakeUrlopen(error=error))
+        verify_turnstile(
+            "tok", "secret", "203.0.113.9", hostnames=HOSTS, urlopen=FakeUrlopen(error=error)
+        )
     assert (info.value.status, info.value.code) == (503, "unavailable")
 
 
 def test_turnstile_server_error_is_503():
     error = urllib.error.HTTPError("u", 500, "boom", {}, io.BytesIO(b""))
     with pytest.raises(ApiError) as info:
-        verify_turnstile("tok", "secret", "203.0.113.9", urlopen=FakeUrlopen(error=error))
+        verify_turnstile(
+            "tok", "secret", "203.0.113.9", hostnames=HOSTS, urlopen=FakeUrlopen(error=error)
+        )
     assert info.value.status == 503
 
 
@@ -105,13 +113,13 @@ def test_turnstile_bad_json_is_503():
             return FakeResponse.raw(b"<html>not json</html>")
 
     with pytest.raises(ApiError) as info:
-        verify_turnstile("tok", "secret", "203.0.113.9", urlopen=Garbled())
+        verify_turnstile("tok", "secret", "203.0.113.9", hostnames=HOSTS, urlopen=Garbled())
     assert info.value.status == 503
 
 
 def test_turnstile_sends_secret_and_ip():
     fake = FakeUrlopen()
-    verify_turnstile("tok", "secret", "203.0.113.9", urlopen=fake, timeout=2.5)
+    verify_turnstile("tok", "secret", "203.0.113.9", hostnames=HOSTS, urlopen=fake, timeout=2.5)
     request, timeout = fake.requests[0]
     assert request.full_url == "https://challenges.cloudflare.com/turnstile/v0/siteverify"
     assert request.get_method() == "POST"
@@ -125,8 +133,61 @@ def test_turnstile_sends_secret_and_ip():
 
 def test_turnstile_omits_local_ip():
     fake = FakeUrlopen()
-    verify_turnstile("tok", "secret", "local", urlopen=fake)
+    verify_turnstile("tok", "secret", "local", hostnames=HOSTS, urlopen=fake)
     assert "remoteip" not in urllib.parse.parse_qs(fake.requests[0][0].data.decode())
+
+
+def _refused(payload, hostnames=HOSTS, token="tok"):
+    fake = FakeUrlopen(payload)
+    with pytest.raises(ApiError) as info:
+        verify_turnstile(token, "secret", "203.0.113.9", hostnames=hostnames, urlopen=fake)
+    assert (info.value.status, info.value.code) == (403, "turnstile_failed")
+    return fake
+
+
+def test_turnstile_long_token_is_403_without_call():
+    assert _refused(PASS, token="x" * 2049).requests == []
+    verify_turnstile("x" * 2048, "secret", "203.0.113.9", hostnames=HOSTS, urlopen=FakeUrlopen())
+
+
+def test_turnstile_wrong_hostname_is_403():
+    _refused({**PASS, "hostname": "evil.example"})
+    _refused({k: v for k, v in PASS.items() if k != "hostname"})
+
+
+def test_turnstile_hostname_match_ignores_case():
+    payload = {**PASS, "hostname": "Climate-Chat.Example.ORG"}
+    verify_turnstile("tok", "secret", "203.0.113.9", hostnames=HOSTS, urlopen=FakeUrlopen(payload))
+
+
+def test_turnstile_wrong_action_is_403():
+    _refused({**PASS, "action": "login"})
+
+
+def test_turnstile_missing_action_is_403_for_real_keys():
+    _refused({k: v for k, v in PASS.items() if k != "action"})
+    _refused({**PASS, "action": "", "metadata": {"result_with_testing_key": False}})
+
+
+def test_turnstile_missing_action_allowed_with_test_key():
+    """Cloudflare's test secret reports hostname example.com and no action at all."""
+    payload = {
+        "success": True,
+        "hostname": "example.com",
+        "metadata": {"result_with_testing_key": True},
+    }
+    verify_turnstile(
+        "tok", "secret", "local", hostnames=("example.com",), urlopen=FakeUrlopen(payload)
+    )
+
+
+def test_turnstile_test_key_still_needs_an_allowed_hostname():
+    payload = {
+        "success": True,
+        "hostname": "example.com",
+        "metadata": {"result_with_testing_key": True},
+    }
+    _refused(payload)
 
 
 # --- RateLimiter ---

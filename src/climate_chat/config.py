@@ -188,6 +188,7 @@ class ServiceSettings:
     cache_max_distance: float
     excluded_licences: tuple[str, ...]
     client_ip_header: str
+    turnstile_hostnames: tuple[str, ...]  # siteverify's hostname must be one
     openrouter_key_param: str
     turnstile_secret_param: str
     log_hash_key_param: str
@@ -228,6 +229,12 @@ def load_service_settings(
         return get(key) or f"/climate-chat/{base.env}/{name}"
 
     licences = get("EXCLUDED_LICENCES") or ""
+    hostnames = tuple(
+        h.strip().lower() for h in (get("TURNSTILE_HOSTNAMES") or "").split(",") if h.strip()
+    )
+    if not hostnames:
+        # An empty allowlist would accept a Turnstile token issued on any site.
+        raise ConfigError("TURNSTILE_HOSTNAMES is not set (see .env.example)")
     return ServiceSettings(
         base=base,
         logs_table=require("LOGS_TABLE"),
@@ -249,6 +256,7 @@ def load_service_settings(
         cache_max_distance=distance("CACHE_MAX_DISTANCE", DEFAULT_CACHE_MAX_DISTANCE),
         excluded_licences=tuple(x.strip() for x in licences.split(",") if x.strip()),
         client_ip_header=(get("CLIENT_IP_HEADER") or "cloudfront-viewer-address").lower(),
+        turnstile_hostnames=hostnames,
         openrouter_key_param=param("OPENROUTER_KEY_PARAM", "openrouter-api-key"),
         turnstile_secret_param=param("TURNSTILE_SECRET_PARAM", "turnstile-secret-key"),
         log_hash_key_param=param("LOG_HASH_KEY_PARAM", "log-hash-key"),

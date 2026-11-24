@@ -1,0 +1,49 @@
+/* Minimal on purpose: a full design replaces this later. */
+
+body {
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  margin: 0;
+}
+
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+label {
+  display: block;
+  margin: 0.75rem 0;
+}
+
+label.option {
+  display: inline-block;
+  margin: 0 1rem 0 0;
+}
+
+textarea,
+input:not([type]) {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+}
+
+fieldset {
+  margin: 0.75rem 0;
+}
+
+.count {
+  color: #666;
+  font-size: 0.85em;
+}
+
+.count.over,
+.error {
+  color: #b00020;
+}
+
+.reply-text {
+  white-space: pre-wrap;
+}

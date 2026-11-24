@@ -73,9 +73,13 @@ AWS WAF with CAPTCHA was considered and not chosen: it costs at least $5/month a
 
 Turnstile is Cloudflare's free bot check. It works on any site, so the domain doesn't need to be on Cloudflare DNS.
 
-1. The Solid app renders the Turnstile widget in **managed mode**, so most people never see a challenge. The widget uses the public **site key**, which is baked into the UI build.
+1. The Solid app renders the Turnstile widget in **managed mode**, so most people never see a challenge. The widget uses the public **site key**, which is baked into the UI build, and the action **`chat`**.
 2. Each `POST /api/chat` sends the widget's token with the comment: `{ comment, turnstile_token }`.
-3. The Python service verifies the token with Cloudflare's `siteverify` endpoint, using the private **secret key**, **before** the rate limit, the cache lookup or any LLM call. A missing or failed token returns HTTP 403.
+3. The Python service verifies the token with Cloudflare's `siteverify` endpoint, using the private **secret key**, **before** the rate limit, the cache lookup or any LLM call. A token passes only if all of these hold; otherwise the request gets HTTP 403 `turnstile_failed`:
+   - It's present and at most 2,048 characters (checked before any call to Cloudflare).
+   - `siteverify` says `success: true`.
+   - The answer's `hostname` is in the `TURNSTILE_HOSTNAMES` allowlist (comma-separated): `climate-chat.<domain>` in prod, set by Terraform. An empty allowlist is a configuration error, so the service refuses to start rather than accept every site.
+   - The answer's `action` is `chat`. Cloudflare's test secret returns no action at all, so a missing action is accepted only when the answer is marked `metadata.result_with_testing_key: true`. Only the test secret produces that, and prod never has it. Locally, the allowlist is `example.com`, the hostname the test secret reports.
 4. Tokens are single-use and expire after 5 minutes, so the UI resets the widget after every response (success or error), and each message gets a fresh token.
 
 The secret key is stored like the OpenRouter keys (see Secrets).

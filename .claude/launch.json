@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "service",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "python", "-m", "climate_chat.service.local", "--port", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "ui",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "ui", "dev", "--port", "5173", "--strictPort"],
+      "port": 5173
+    }
+  ]
+}

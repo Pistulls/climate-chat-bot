@@ -19,6 +19,8 @@ from climate_chat.service.api import ApiError, unavailable
 
 SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 LOCAL_IP = "local"
+TURNSTILE_ACTION = "chat"  # set by the UI's widget
+MAX_TOKEN_CHARS = 2048  # Cloudflare's limit for a token
 
 
 def client_ip(headers: dict[str, str], header_name: str) -> str:
@@ -37,11 +39,16 @@ def verify_turnstile(
     secret: str,
     remote_ip: str,
     *,
+    hostnames: tuple[str, ...],
+    action: str = TURNSTILE_ACTION,
     urlopen: Callable[..., Any] = urllib.request.urlopen,
     timeout: float = 3.0,
 ) -> None:
-    """Raise 403 if Cloudflare rejects the token, and 503 if Cloudflare can't be asked:
-    an outage there isn't the user's fault."""
+    """Raise 403 unless Cloudflare accepts the token for one of `hostnames` and `action`
+    (Design.md, Cloudflare Turnstile), and 503 if Cloudflare can't be asked: an outage
+    there isn't the user's fault."""
+    if len(token) > MAX_TOKEN_CHARS:
+        raise _turnstile_failed()
     fields = {"secret": secret, "response": token}
     if remote_ip != LOCAL_IP:
         fields["remoteip"] = remote_ip
@@ -56,7 +63,19 @@ def verify_turnstile(
     except (OSError, ValueError) as e:  # URLError, HTTPError and timeouts are OSErrors
         raise unavailable() from e
     if result.get("success") is not True:
-        raise ApiError(403, "turnstile_failed", "The bot check failed. Please try again.")
+        raise _turnstile_failed()
+    hostname = result.get("hostname")
+    if not isinstance(hostname, str) or hostname.lower() not in hostnames:
+        raise _turnstile_failed()
+    # Cloudflare's test secret reports no action; only it sets result_with_testing_key.
+    metadata = result.get("metadata")
+    test_key = isinstance(metadata, dict) and metadata.get("result_with_testing_key") is True
+    if result.get("action") != action and not (test_key and not result.get("action")):
+        raise _turnstile_failed()
+
+
+def _turnstile_failed() -> ApiError:
+    return ApiError(403, "turnstile_failed", "The bot check failed. Please try again.")
 
 
 class RateLimiter:
