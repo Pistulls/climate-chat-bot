@@ -232,7 +232,7 @@ sources/docs/
 .terraform/
 *.tfstate
 *.tfstate.*
-tfplan
+tfplan*
 *.tfplan
 crash.log
 # Personal/account values for this public repo: backend config and tfvars
