@@ -53,6 +53,7 @@ class TestRepoManifest:
     def test_known_problems_are_marked(self):
         by_id = {s.id: s for s in load_manifest()}
         assert by_id["10"].ingest is False
+        assert by_id["35"].ingest is False  # chart images only; #36 covers the same figures
         assert [i for i, s in by_id.items() if s.licence == "non-commercial"] == [
             "08",
             "21",
@@ -60,9 +61,13 @@ class TestRepoManifest:
             "23",
         ]
 
+    def test_uk_sources_are_open_government_licence(self):
+        by_id = {s.id: s for s in load_manifest()}
+        assert all(by_id[f"{n}"].licence == "gov" for n in range(30, 42))
+
     def test_snapshots_have_capture_dates(self):
         snapshots = [s for s in load_manifest() if s.snapshot]
-        assert {s.id for s in snapshots} == {"07", "08", "09", "10", "25", "26", "27", "28", "29"}
+        assert {s.id for s in snapshots} == {"07", "08", "09", "10", "25", "26", "27", "28", "29", "32", "33", "35", "37"}
         # Re-captured snapshots get new dates; none can predate the first capture.
         assert all(s.captured >= dt.date(2026, 11, 22) for s in snapshots)
 

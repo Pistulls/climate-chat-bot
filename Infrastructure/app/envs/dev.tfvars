@@ -3,13 +3,14 @@
 env            = "dev"
 create_hosting = false
 
-# openai/text-embedding-3-small is 1536-d. Chosen by the plan 02 bake-off, see Design.md.
-embedding_dimension = 1536
+# amazon.titan-embed-text-v2:0 on Bedrock, 1024-d (plan 06, see Design.md). Changing the
+# dimension replaces both indexes; re-ingest afterwards.
+embedding_dimension = 1024
 
 models = {
   classify  = "anthropic/claude-haiku-5.5"
   facts     = "anthropic/claude-haiku-5.5"
   reply     = "anthropic/claude-haiku-5.5"
   fallback  = "openai/gpt-6-luna"
-  embedding = "openai/text-embedding-3-small"
+  embedding = "amazon.titan-embed-text-v2:0"
 }
