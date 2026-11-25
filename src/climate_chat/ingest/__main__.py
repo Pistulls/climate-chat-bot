@@ -11,8 +11,9 @@ Stages read and write the gitignored build/ folder, so each can be re-run on its
 
 All embedding uses MODEL_EMBEDDING from .env. `embed` and `evaluate --in-memory` take
 --model (repeatable) to compare candidates instead, as the plan 02 bake-off did.
-`embed` and `evaluate` call OpenRouter with the ingest key (INGEST_OPENROUTER_API_KEY in
-.env, else SSM). `load` and `evaluate --env` use your AWS credentials (AWS_PROFILE).
+`embed` and `evaluate` call Bedrock for `amazon.` models (Titan, the default) and
+OpenRouter with the ingest key for others (INGEST_OPENROUTER_API_KEY in .env, else SSM).
+Bedrock, `load` and `evaluate --env` use your AWS credentials (AWS_PROFILE).
 """
 
 from __future__ import annotations
