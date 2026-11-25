@@ -10,6 +10,11 @@ variable "account_id" {
   type = string
 }
 
+variable "embedding_model" {
+  type        = string
+  description = "Embedding model id; ids starting amazon. are called through Bedrock"
+}
+
 variable "fqdn" {
   type        = string
   description = "climate-chat.<domain>. Its hosted zone and ACM certificate come from Infrastructure/bootstrap."

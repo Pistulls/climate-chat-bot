@@ -11,11 +11,12 @@ module "hosting" {
     aws.us_east_1 = aws.us_east_1
   }
 
-  name_prefix = local.name_prefix
-  region      = var.region
-  account_id  = data.aws_caller_identity.current.account_id
-  fqdn        = local.fqdn
-  lambda      = var.lambda
+  name_prefix     = local.name_prefix
+  region          = var.region
+  account_id      = data.aws_caller_identity.current.account_id
+  embedding_model = var.models.embedding
+  fqdn            = local.fqdn
+  lambda          = var.lambda
 
   ssm_parameter_names = values(local.ssm_parameters)
 

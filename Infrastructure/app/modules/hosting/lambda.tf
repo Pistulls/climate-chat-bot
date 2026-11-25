@@ -74,6 +74,16 @@ data "aws_iam_policy_document" "api" {
     resources = [for name in var.ssm_parameter_names : "arn:aws:ssm:${var.region}:${var.account_id}:parameter${name}"]
   }
 
+  # Embeddings (plan 06): Bedrock models only, and only the configured one.
+  dynamic "statement" {
+    for_each = startswith(var.embedding_model, "amazon.") ? [var.embedding_model] : []
+    content {
+      sid       = "Embeddings"
+      actions   = ["bedrock:InvokeModel"]
+      resources = ["arn:aws:bedrock:${var.region}::foundation-model/${statement.value}"]
+    }
+  }
+
   # SecureStrings use the AWS-managed aws/ssm key; only allow decrypting through SSM.
   statement {
     sid       = "SecretsDecrypt"
