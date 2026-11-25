@@ -29,10 +29,12 @@ to is in [Infrastructure/README.md](Infrastructure/README.md).
 1. Install [uv](https://docs.astral.sh/uv/), then `uv sync` (Python 3.14 and the pinned
    dependencies from `uv.lock`).
 2. Copy `.env.example` to `.env` and fill it in. Ingestion needs `AWS_PROFILE`,
-   `MODEL_EMBEDDING`, `EMBEDDING_DIMENSION` and `INGEST_OPENROUTER_API_KEY`. If the key is
-   left as its placeholder, it's read from SSM (`/climate-chat/ingest/openrouter-api-key`).
-   The ingest key has its own OpenRouter credit cap.
-3. Sign in to AWS (`aws sso login`) before the `load` stage or `evaluate --env`.
+   `MODEL_EMBEDDING` and `EMBEDDING_DIMENSION`. The model is Amazon Titan Text V2
+   (`amazon.titan-embed-text-v2:0`, 1024-d), called through AWS Bedrock with your AWS
+   credentials, so no API key is needed. `INGEST_OPENROUTER_API_KEY` is only used to compare
+   OpenRouter models (`embed --model <id>`); if it's left as its placeholder, it's read from
+   SSM (`/climate-chat/ingest/openrouter-api-key`).
+3. Sign in to AWS (`aws sso login`) before the `embed` and `load` stages or `evaluate --env`.
 4. Download the PDFs into `sources/docs/` using the file names in
    [sources/index.md](sources/index.md). The folder is gitignored.
 
@@ -49,7 +51,7 @@ writes the gitignored `build/` folder, so any of them can be re-run on its own. 
 |---|---|---|
 | `extract` | PDF to cleaned text per page (`build/text/`) | ~3 min |
 | `chunk` | Text to ~500-token chunks with page ranges (`build/chunks/`) | seconds |
-| `embed` | Chunks to vectors with `MODEL_EMBEDDING`, cached by content hash (`build/embeddings/`) | ~1 min, ~$0.02 |
+| `embed` | Chunks to vectors with `MODEL_EMBEDDING`, cached by content hash (`build/embeddings/`) | ~2.5 min, ~$0.10 (Titan, limited by the account's 300,000 tokens a minute) |
 | `load --env dev` | Vectors and metadata into that environment's `sources` index | ~20 s |
 | `evaluate --env dev` | The 20 test myths in `eval/retrieval_myths.toml` against the live index, compared with an in-memory search | ~20 s |
 
@@ -69,7 +71,7 @@ Re-ingest when a source is added or replaced, when a web-page snapshot is re-cap
 when the extraction or chunking code changes.
 
 1. **Re-capture the web-page snapshots** if their data matters: #07, #08, #09, #25, #26,
-   #27, #28 and #29 (and #10, though it isn't ingested). Print each page to PDF from a
+   #27, #28, #29, #32, #33 and #37 (and #10 and #35, though they aren't ingested). Print each page to PDF from a
    browser under its existing file name in `sources/docs/`, then update `captured` in
    `sources/manifest.toml` and the capture date in `sources/index.md`.
 2. **For a new source:** save the PDF as `sources/docs/<id>-<name>.pdf`, add a row to
@@ -95,13 +97,17 @@ when the extraction or chunking code changes.
    ```
 
    The evaluation runs all 20 myths, so it also catches a change that hurts other
-   sources' retrieval. Expect 20/20 recall@5, matching the in-memory search.
+   sources' retrieval. Expect at least 18/20 recall@5 (Titan's two known misses are "no
+   warming since 1998" and "fuel prices soaring because of climate policies"), matching the
+   in-memory search.
 5. **Repeat step 4 with `--env prod`.**
 
 **Changing the embedding model** means re-embedding everything and replacing both indexes
 if the dimension changes. Compare candidates first with `embed --model <id>` and
-`evaluate --in-memory --model <a> --model <b>`, then follow plan 02's step 4.4 and the
-Terraform notes in [Infrastructure/README.md](Infrastructure/README.md).
+`evaluate --in-memory --model <a> --model <b>` (candidates are listed in
+`climate_chat/ingest/embed.py`; `amazon.` ids use Bedrock, others OpenRouter), then follow
+[Project/Plans/06.Embeddings.md](Project/Plans/06.Embeddings.md)'s rollout: code first,
+then the Terraform change, then re-ingest dev and prod straight away.
 
 ## Service
 
@@ -113,11 +119,14 @@ in [Project/Design.md](Project/Design.md); the plan and its results are in
 ### Local setup
 
 1. `uv sync`, then copy `.env.example` to `.env` (see Ingestion above). The service also
-   needs `OPENROUTER_API_KEY` (the credit-capped dev key) and `LOG_HASH_KEY` (any long
-   random string, e.g. `openssl rand -hex 32`). `TURNSTILE_SECRET_KEY` is already
-   Cloudflare's always-pass test secret, so any token works locally.
-2. `aws sso login`. Locally the service uses the dev data stores: the `sources` and
-   `response-cache` indexes and the `logs` and `ratelimits` tables.
+   needs `OPENROUTER_API_KEY` (the credit-capped dev key, for the chat models) and
+   `LOG_HASH_KEY` (any long random string, e.g. `openssl rand -hex 32`).
+   `TURNSTILE_SECRET_KEY` is already Cloudflare's always-pass test secret, so any token
+   works locally, and `TURNSTILE_HOSTNAMES=example.com` is the hostname that secret reports.
+   In prod, a token must come from `climate-chat.<domain>` with the action `chat`.
+2. `aws sso login`. Locally the service uses the dev data stores (the `sources` and
+   `response-cache` indexes and the `logs` and `ratelimits` tables) and embeds claims with
+   Titan on Bedrock, all with your AWS credentials.
 
 ### Running it
 
@@ -147,7 +156,7 @@ uv run python scripts/try_chat.py "mine barely works below 5C, waste of money" \
 | Command | What it does | Cost |
 |---|---|---|
 | `uv run pytest` | Unit tests; no network | Free |
-| `uv run pytest -m live` | The 20 myths in `eval/retrieval_myths.toml` through the service's own search, against dev | Under $0.001 |
+| `uv run pytest -m live` | One real Titan call, and the 20 myths in `eval/retrieval_myths.toml` through the service's own search against dev (at least 18 must find a source) | Under $0.001 |
 | `uv run python -m climate_chat.service.evaluate [--runs 2]` | The comments in `eval/replies.toml` (some with `subject` or `thread`), end to end against dev, written to `build/reports/replies.md` to read by hand, with any failed checks | About $0.01 per run |
 
 The evaluation writes answer cards into the dev `response-cache`. To test prompt changes
@@ -199,3 +208,62 @@ aws dynamodb query --table-name climate-chat-prod-logs \
 ```
 
 Errors with stack traces are in CloudWatch Logs, `/aws/lambda/climate-chat-prod-api`.
+
+## UI
+
+The page at `https://climate-chat.<domain>/` is a plain one-shot form: paste a comment, add
+context if you have it, and get one cited reply to copy. It's a Solid 2 + Vite + TypeScript
+app in `ui/`, styled as little as possible until the full design replaces it. The plan and
+its results are in [Project/Plans/04.UI.md](Project/Plans/04.UI.md).
+
+### Setup
+
+1. Node 24 and pnpm 12.14.0 (pinned in `ui/package.json`).
+2. `cd ui && pnpm install`. pnpm installs nothing published in the last 5 days, refuses any
+   package whose trust level drops, and runs no install scripts (`ui/pnpm-workspace.yaml`).
+
+### Running it locally
+
+In two terminals, from the repo root:
+
+```bash
+uv run python -m climate_chat.service.local
+```
+
+```bash
+pnpm --dir ui dev
+```
+
+Open `http://localhost:5173`. Vite forwards `/api/*` to the local service on port 8000,
+which uses the dev data stores. `ui/.env.development` holds Cloudflare's always-pass test
+site key, which pairs with the test secret and `TURNSTILE_HOSTNAMES=example.com` in `.env`,
+so the whole flow works locally. `.claude/launch.json` has both servers for the app's
+browser pane.
+
+### Tests
+
+From `ui/`: `pnpm test` (Node's built-in test runner on `src/*.test.ts`: character counts,
+the request body and its hash, reading replies and errors, which URLs become links),
+`pnpm typecheck` and `pnpm build`. The components themselves are checked in a browser.
+
+### Adding a package
+
+**Every package passes a security audit before it's used.** Before `pnpm add`, check the
+package against its project's own repo or docs (use the install command published there),
+its publisher, its provenance (`npm view <pkg> dist.attestations`), any install scripts,
+and how many packages it pulls in. Record the result as a bullet under "04. UI" in
+[Project/Plan.md](Project/Plan.md). CI runs `pnpm audit` on every build and fails on any
+known vulnerability.
+
+### Deploying
+
+Merging to `main` with changes under `ui/` runs `.github/workflows/ui.yml`:
+install with the lockfile, `pnpm audit`, type check, test and build (also on every pull
+request), then on `main` it refuses to ship the test site key, uploads the hashed assets
+(cached for a year), then `index.html` (`no-cache`), removes old files, invalidates
+`index.html` in CloudFront and checks that the live page serves the new build. The real
+Turnstile site key comes from the `TURNSTILE_SITE_KEY` repository variable; the secret is
+in SSM (`/climate-chat/prod/turnstile-secret-key`).
+
+Turnstile won't issue tokens to an automated browser (it answers error `600010`), so
+the prod page is tested by hand in a normal browser.

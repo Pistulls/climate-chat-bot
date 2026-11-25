@@ -33,6 +33,7 @@ climate-chat.<domain>  →  CloudFront
 ```
 
 - **UI:** plain **Solid 2 + Vite** single-page app: `solid-js` and `@solidjs/web` (the browser renderer), built with `vite` and `@solidjs/vite-plugin`, as Solid's README installs them. `vite-plugin-solid` is the old Solid 1 plugin, renamed for Solid 2. SolidStart isn't used, because its value is server rendering and server functions.
+- **The page (v1):** a one-shot form, with plain HTML and minimal CSS until the full design replaces it. The comment, optional `subject` and `thread`, platform (YouTube by default) and style go in, and one reply card comes out: the reply, a Copy button, the fallacy label and linked citations. Counters count characters as the server does (trimmed, NFC, code points). Everything from the API is rendered as text, and only `http(s)` citation URLs become links. Errors show the API's `message`; anything that isn't the API's JSON (OAC's bare 403, a network failure, a 35 s client timeout) shows a generic message. Retry is offered for `turnstile_failed`, `rate_limited`, `internal`, `upstream_error` and `unavailable`, not for the 400s. The request logic is plain TypeScript tested with Node's built-in test runner, so no test framework needs auditing.
 - **Packages:** installed with **pnpm**, with install scripts blocked and a minimum release age, so a just-published version isn't installed. **Every package passes a security audit before it's used:** each direct package is vetted (publisher, source repo, provenance, install scripts, what it pulls in) and recorded in Plan.md, and CI runs `pnpm audit` on every build and fails on any known vulnerability. The direct packages are kept to a minimum.
 - **UI deploy:** the UI's own CI workflow builds it and syncs it to the S3 bucket, with long-lived caching for hashed assets and `no-cache` for `index.html`, then invalidates `index.html` in CloudFront. Terraform doesn't touch the content.
 - **One domain:** CloudFront sends `/api/*` to the Lambda function URL, so no CORS setup is needed. The function URL is locked to CloudFront with Origin Access Control (OAC), so direct calls are refused.
@@ -55,7 +56,7 @@ climate-chat.<domain>  →  CloudFront
 - **A comment that isn't a climate-sceptic claim** gets HTTP 200 with a fixed, polite reply, empty `citations` and `fallacy: null`, so the UI handles one success shape.
 - **A comment OpenRouter refuses** (HTTP 403, e.g. "prompt injection patterns detected") gets the same shape with the fixed reply "Sorry, I can't reply to that comment.", logged with outcome `blocked`. Retrying wouldn't help, so it isn't an error.
 - **Smoke test event.** Besides function URL requests, the handler accepts a direct Lambda invoke `{"smoke": "<comment>"}` and runs it through the pipeline from Classify on, skipping Turnstile and the rate limit. Only IAM principals can invoke the function directly: the function URL is locked to CloudFront, and function URL events always carry `requestContext.http`, so a public request can't produce this event. It lets the deployed service be tested end to end without a real Turnstile token.
-- **No streaming:** replies are short (~300 tokens), and Lambda's Python runtime doesn't support response streaming natively. The UI shows a typing indicator while it waits.
+- **No streaming:** replies are short (~300 tokens), and Lambda's Python runtime doesn't support response streaming natively. The UI disables the button and says "Writing a sourced reply…" while it waits.
 
 ### Abuse protection for the anonymous endpoint
 
@@ -123,7 +124,7 @@ Model IDs live in config (environment variables), not code, so they can change w
 
 ### Cost and latency per reply
 
-Measured in plan 03 (prod logs and the dev reply evaluation, 2026-11-24), with reasoning off. Costs are OpenRouter's `usage.cost`.
+Measured in plan 03 (prod logs and the dev reply evaluation, 2026-11-24), with reasoning off, and again after plan 06 moved embeddings to Titan (2026-11-25). Costs are OpenRouter's `usage.cost`.
 
 | Call | Tokens in / out (measured) | Cost (measured) |
 |---|---|---|
@@ -131,11 +132,11 @@ Measured in plan 03 (prod logs and the dev reply evaluation, 2026-11-24), with r
 | Claim embedding (Titan V2, Bedrock) | ~15 | about $0.0000015 |
 | Facts LLM (cache miss only) | ~4,500 in (instructions + 5 chunks), 390–610 out | ~$0.00065 |
 | ResponseBot LLM | ~1,000–1,200 in (comment + tone + answer card), 120–200 out | ~$0.00017 |
-| **Total, cache miss** | 3 LLM calls, **5–8.6 s** | **~$0.0010** (about 1,000 replies per $1) |
-| **Total, cache hit** | 2 LLM calls, **2.3–4.4 s** | **~$0.0003** (about 3,000 replies per $1) |
+| **Total, cache miss** | 3 LLM calls, **4.7–7.7 s** with Titan (5–8.6 s before) | **~$0.0010** (about 1,000 replies per $1) |
+| **Total, cache hit** | 2 LLM calls, **1.9–3.6 s** with Titan, up to 6.3 s (2.3–4.4 s before) | **~$0.0004** (about 2,500 replies per $1) |
 
 - **About 40% more per reply than first estimated** (~$0.0007 per miss, ~$0.00024 per hit). The prompts are longer than assumed: Classify carries the CARDS and tone instructions, and Facts carries five ~500-token chunks.
-- **A cache miss is slower than the 4–6 s target**, mostly the Facts call. It's well within the Lambda's 30 s timeout and CloudFront's 30 s origin timeout. The UI shows a typing indicator while it waits.
+- **A cache miss can be slower than the 4–6 s target**, mostly the Facts call. It's well within the Lambda's 30 s timeout and CloudFront's 30 s origin timeout. Titan saves about 0.3–0.6 s per reply over the OpenRouter embedding. The first request after a deploy or a configuration change adds about 10 s while the Lambda starts.
 - **Comment context** (`subject`, `thread`) adds up to ~400 input tokens to Classify and ResponseBot at the caps, about $0.00008 per reply.
 - **A retried call adds its cost again**: a failed check retries once, so the worst case for a miss is about $0.0017.
 - **The cache saves less than first hoped**, because the strict 0.15 threshold only matches near-identical claims (see [Response cache writes](#response-cache-writes)).
