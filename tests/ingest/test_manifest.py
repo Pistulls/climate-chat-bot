@@ -67,7 +67,21 @@ class TestRepoManifest:
 
     def test_snapshots_have_capture_dates(self):
         snapshots = [s for s in load_manifest() if s.snapshot]
-        assert {s.id for s in snapshots} == {"07", "08", "09", "10", "25", "26", "27", "28", "29", "32", "33", "35", "37"}
+        assert {s.id for s in snapshots} == {
+            "07",
+            "08",
+            "09",
+            "10",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "32",
+            "33",
+            "35",
+            "37",
+        }
         # Re-captured snapshots get new dates; none can predate the first capture.
         assert all(s.captured >= dt.date(2026, 11, 22) for s in snapshots)
 
