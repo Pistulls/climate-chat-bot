@@ -1,5 +1,5 @@
-// The one-shot page (Project/Plans/04.UI.md, "The page"). Deliberately plain: a full
-// design replaces the markup and CSS later, and the logic lives in api.ts and text.ts.
+// The one-shot page (Project/Plans/04.UI.md, "The page"). Markup and layout only: the
+// logic lives in api.ts and text.ts, the look in style.css.
 // Everything from the API is rendered as text, never as HTML.
 
 import { createSignal, For, onSettled, Show } from "solid-js";
@@ -114,7 +114,7 @@ export default function App() {
   return (
     <main>
       <h1>Climate Chat</h1>
-      <p>Paste a climate-sceptic comment and get a short, sourced reply.</p>
+      <p class="intro">Paste a climate-sceptic comment and get a short, sourced reply.</p>
 
       <form
         onSubmit={(e) => {
@@ -122,8 +122,10 @@ export default function App() {
           void send();
         }}
       >
-        <label>
-          Comment <Count count={charCount(comment())} cap={CAPS.comment} />
+        <label class="field">
+          <span class="field-head">
+            Comment <Count count={charCount(comment())} cap={CAPS.comment} />
+          </span>
           <textarea
             rows={5}
             required
@@ -134,54 +136,67 @@ export default function App() {
 
         <details>
           <summary>Add context (optional)</summary>
-          <label>
-            Posted under (a video title or topic){" "}
-            <Count count={charCount(subject())} cap={CAPS.subject} />
+          <label class="field">
+            <span class="field-head">
+              Posted under (a video title or topic)
+              <Count count={charCount(subject())} cap={CAPS.subject} />
+            </span>
             <input value={subject()} onInput={(e) => setSubject(e.currentTarget.value)} />
           </label>
-          <label>
-            Replying to (the message above it) <Count count={charCount(thread())} cap={CAPS.thread} />
+          <label class="field">
+            <span class="field-head">
+              Replying to (the message above it)
+              <Count count={charCount(thread())} cap={CAPS.thread} />
+            </span>
             <textarea rows={3} value={thread()} onInput={(e) => setThread(e.currentTarget.value)} />
           </label>
         </details>
 
-        <fieldset>
-          <legend>Platform</legend>
-          <For each={PLATFORMS}>
-            {([value, label]) => (
-              <label class="option">
-                <input
-                  type="radio"
-                  name="platform"
-                  checked={platform() === value}
-                  onChange={() => setPlatform(value)}
-                />
-                {label}
-              </label>
-            )}
-          </For>
-        </fieldset>
+        <div class="choices">
+          <fieldset>
+            <legend>Platform</legend>
+            <div class="segments">
+              <For each={PLATFORMS}>
+                {([value, label]) => (
+                  <label class="option">
+                    <input
+                      type="radio"
+                      name="platform"
+                      checked={platform() === value}
+                      onChange={() => setPlatform(value)}
+                    />
+                    {label}
+                  </label>
+                )}
+              </For>
+            </div>
+          </fieldset>
 
-        <fieldset>
-          <legend>Style</legend>
-          <For each={STYLES}>
-            {([value, label]) => (
-              <label class="option">
-                <input
-                  type="radio"
-                  name="style"
-                  checked={style() === value}
-                  onChange={() => setStyle(value)}
-                />
-                {label}
-              </label>
-            )}
-          </For>
-        </fieldset>
+          <fieldset>
+            <legend>Style</legend>
+            <div class="segments">
+              <For each={STYLES}>
+                {([value, label]) => (
+                  <label class="option">
+                    <input
+                      type="radio"
+                      name="style"
+                      checked={style() === value}
+                      onChange={() => setStyle(value)}
+                    />
+                    {label}
+                  </label>
+                )}
+              </For>
+            </div>
+          </fieldset>
+        </div>
 
         <div ref={widgetEl} />
         <Show when={widgetFailed()}>
-          <p role="alert">The bot check couldn't load. Please reload the page.</p>
+          <p class="notice" role="alert">
+            The bot check couldn't load. Please reload the page.
+          </p>
         </Show>
 
         <button type="submit" disabled={!ready()}>
@@ -207,32 +222,36 @@ export default function App() {
           <section class="reply">
             <h2>Reply</h2>
             <p class="reply-text">{r().reply}</p>
-            <button type="button" onClick={() => copy(r().reply)}>
-              {copied() ? "Copied" : "Copy"}
-            </button>
+            <div class="reply-actions">
+              <button type="button" onClick={() => copy(r().reply)}>
+                {copied() ? "Copied" : "Copy"}
+              </button>
+              <button type="button" onClick={tryAnother}>
+                Try another
+              </button>
+            </div>
             <Show when={r().fallacy}>
-              <p>Fallacy: {r().fallacy}</p>
+              <p class="fallacy">Fallacy: {r().fallacy}</p>
             </Show>
             <Show when={r().citations.length > 0}>
-              <h3>Sources</h3>
-              <ol>
-                <For each={r().citations}>
-                  {(c) => (
-                    <li>
-                      <Show when={isLinkable(c.url)} fallback={c.title}>
-                        <a href={c.url} target="_blank" rel="noopener noreferrer">
-                          {c.title}
-                        </a>
-                      </Show>
-                      , {pagesLabel(c.pages)}
-                    </li>
-                  )}
-                </For>
-              </ol>
+              <div class="sources">
+                <h3>Sources</h3>
+                <ol>
+                  <For each={r().citations}>
+                    {(c) => (
+                      <li>
+                        <Show when={isLinkable(c.url)} fallback={c.title}>
+                          <a href={c.url} target="_blank" rel="noopener noreferrer">
+                            {c.title}
+                          </a>
+                        </Show>
+                        , {pagesLabel(c.pages)}
+                      </li>
+                    )}
+                  </For>
+                </ol>
+              </div>
             </Show>
-            <button type="button" onClick={tryAnother}>
-              Try another
-            </button>
           </section>
         )}
       </Show>
