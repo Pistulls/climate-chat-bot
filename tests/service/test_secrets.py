@@ -89,3 +89,13 @@ def test_ssm_client_created_lazily_from_settings(monkeypatch):
     monkeypatch.setattr(type(base), "aws_client", lambda self, service: ssm)
     store = SecretStore(dataclasses.replace(settings, base=base))
     assert store.log_hash_key() == "hash-ssm"
+
+
+def test_admin_key_from_env_locally_and_ssm_in_the_lambda():
+    ssm = FakeSSM()
+    ssm.values["/climate-chat/prod/admin-key"] = "admin-ssm"
+    assert SecretStore(make_settings(ADMIN_KEY="admin-local"), ssm_client=ssm).admin_key() == (
+        "admin-local"
+    )
+    assert SecretStore(make_settings(), ssm_client=ssm).admin_key() == "admin-ssm"
+    assert ssm.calls == ["/climate-chat/prod/admin-key"]

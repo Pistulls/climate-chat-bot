@@ -8,6 +8,7 @@ locals {
     openrouter_api_key   = "/climate-chat/${var.env}/openrouter-api-key"
     turnstile_secret_key = "/climate-chat/${var.env}/turnstile-secret-key"
     log_hash_key         = "/climate-chat/${var.env}/log-hash-key"
+    admin_key            = "/climate-chat/${var.env}/admin-key"
   }
 }
 

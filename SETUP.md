@@ -192,6 +192,19 @@ aws dynamodb query --table-name climate-chat-prod-logs \
 
 Errors with stack traces are in CloudWatch Logs, `/aws/lambda/climate-chat-prod-api`.
 
+The easier way is the logs page, `https://climate-chat.<domain>/logs` (or `/logs` on the
+local dev server): a table of requests, newest first, 25 to a page. It asks for the admin
+key, which it sends as `X-Admin-Key` to `GET /api/logs`. Without the right key the API
+answers 404. To set the key:
+
+1. Generate one per environment with `openssl rand -base64 32` and keep it in your password
+   manager. The service refuses any key under 32 characters, so the `CHANGE_ME` placeholder
+   that bootstrap creates never works.
+2. Put them in `Infrastructure/secrets.local.env` as `PROD_ADMIN_KEY` and `DEV_ADMIN_KEY`,
+   then run `Infrastructure/scripts/put-secrets.sh`. For local runs, also set `ADMIN_KEY`
+   in `.env` (or leave it out and the service reads `/climate-chat/dev/admin-key`).
+3. To rotate, set a new value the same way. The Lambda picks it up within 5 minutes.
+
 ## UI
 
 The page at `https://climate-chat.<domain>/` is a plain one-shot form: paste a comment, add

@@ -1,11 +1,15 @@
-// Local-only request logs (dev server at /logs; see main.tsx). One page at a time from
-// GET /api/logs, newest first. The service pages by cursor, so "Older" follows the
-// cursor it returned and "Newer" steps back through the cursors already used.
+// The request-logs page at /logs (see main.tsx). One page at a time from GET /api/logs,
+// newest first. The service pages by cursor, so "Older" follows the cursor it returned
+// and "Newer" steps back through the cursors already used.
+//
+// The API needs the admin key in X-Admin-Key, and answers a wrong one with 404. The page
+// asks for it once and keeps it in sessionStorage: this tab only, gone when it closes.
 // Comments are visitor text: rendered as text only, never as HTML.
 
 import { createSignal, For, onSettled, Show } from "solid-js";
 
 const PAGE_SIZE = 25;
+const KEY_STORAGE = "climate-chat-admin-key";
 
 interface LogCall {
   role: string;
@@ -74,7 +78,36 @@ export default function LogsPage() {
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
+  // The key lives in a plain variable for requests and in a signal for the view. Solid
+  // batches signal writes, so a key() read straight after setKey() would still see the
+  // old value and the request would go out without it.
+  let adminKey = sessionStorage.getItem(KEY_STORAGE);
+  const [key, setKey] = createSignal<string | null>(adminKey);
+
+  function saveKey(value: string | null) {
+    adminKey = value;
+    setKey(value);
+    if (value) sessionStorage.setItem(KEY_STORAGE, value);
+    else sessionStorage.removeItem(KEY_STORAGE);
+  }
+  const [keyDraft, setKeyDraft] = createSignal("");
+
   const pageNumber = () => cursors().length;
+
+  function forgetKey(message: string | null) {
+    saveKey(null);
+    setPage(null);
+    setCursors([null]);
+    setError(message);
+  }
+
+  async function unlock() {
+    const k = keyDraft().trim();
+    if (!k) return;
+    saveKey(k);
+    setKeyDraft("");
+    await refresh();
+  }
 
   async function load(cursor: string | null): Promise<boolean> {
     setLoading(true);
@@ -82,8 +115,15 @@ export default function LogsPage() {
     try {
       const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
       if (cursor) query.set("cursor", cursor);
-      const response = await fetch(`/api/logs?${query}`);
+      const response = await fetch(`/api/logs?${query}`, {
+        headers: { "x-admin-key": adminKey ?? "" },
+        cache: "no-store",
+      });
       const body = await response.json().catch(() => null);
+      if (response.status === 404) {
+        forgetKey("That key didn't work. Check it and try again.");
+        return false;
+      }
       if (!response.ok || !body) {
         setError(body?.message ?? `The service answered ${response.status}.`);
         return false;
@@ -93,7 +133,9 @@ export default function LogsPage() {
       return true;
     } catch {
       setError(
-        "Couldn't reach the local service. Start it with: uv run python -m climate_chat.service.local",
+        import.meta.env.DEV
+          ? "Couldn't reach the local service. Start it with: uv run python -m climate_chat.service.local"
+          : "Couldn't reach the service. Check your connection and try again.",
       );
       return false;
     } finally {
@@ -120,7 +162,11 @@ export default function LogsPage() {
   onSettled(() => {
     document.title = "Climate Chat request logs";
     document.body.classList.add("plain");
-    void load(null);
+    const robots = document.createElement("meta");
+    robots.name = "robots";
+    robots.content = "noindex, nofollow";
+    document.head.append(robots);
+    if (adminKey) void load(null);
   });
 
   return (
@@ -133,13 +179,44 @@ export default function LogsPage() {
             <Show when={page()} fallback="the logs table">
               {(p) => <code>{p().table}</code>}
             </Show>
-            . This page only exists on your machine.
+            .
           </p>
         </div>
-        <button type="button" onClick={() => void refresh()} disabled={loading()}>
-          Refresh
-        </button>
+        <Show when={key()}>
+          <div class="logs-actions">
+            <button type="button" onClick={() => void refresh()} disabled={loading()}>
+              Refresh
+            </button>
+            <button type="button" onClick={() => forgetKey(null)}>
+              Lock
+            </button>
+          </div>
+        </Show>
       </header>
+
+      <Show when={!key()}>
+        <form
+          class="key-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void unlock();
+          }}
+        >
+          <label class="field">
+            <span class="field-head">Admin key</span>
+            <input
+              type="password"
+              autocomplete="current-password"
+              required
+              value={keyDraft()}
+              onInput={(e) => setKeyDraft(e.currentTarget.value)}
+            />
+          </label>
+          <button type="submit" disabled={loading()}>
+            Show logs
+          </button>
+        </form>
+      </Show>
 
       <Show when={error()}>
         {(message) => (

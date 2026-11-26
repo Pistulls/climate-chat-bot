@@ -10,6 +10,10 @@ locals {
     # HMAC key for the hashed user ids in the request logs (Project/Design.md, Request logs).
     prod_log_hash = "/climate-chat/prod/log-hash-key"
     dev_log_hash  = "/climate-chat/dev/log-hash-key"
+    # Key for GET /api/logs (the request logs), sent as X-Admin-Key. The service refuses
+    # any stored value under 32 characters, so the CHANGE_ME placeholder unlocks nothing.
+    prod_admin = "/climate-chat/prod/admin-key"
+    dev_admin  = "/climate-chat/dev/admin-key"
   }
 }
 

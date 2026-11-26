@@ -5,10 +5,9 @@ import "./style.css";
 
 const root = document.getElementById("app")!;
 
-// The request-logs page is local only: it reads GET /api/logs, which only the local
-// service (climate_chat.service.local) serves. A production build replaces
-// import.meta.env.DEV with false, so this branch and the page's module are left out.
-if (import.meta.env.DEV && location.pathname === "/logs") {
+// /logs is the request-logs page. It's a separate chunk, so the chat page never loads it,
+// and it holds no secrets: the logs come from GET /api/logs, which needs the admin key.
+if (location.pathname === "/logs") {
   void import("./LogsPage.tsx").then(({ default: LogsPage }) => {
     render(() => <LogsPage />, root);
   });

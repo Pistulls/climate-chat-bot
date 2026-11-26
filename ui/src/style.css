@@ -295,6 +295,35 @@ body.plain {
   margin: 0;
 }
 
+.logs-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.key-form {
+  display: grid;
+  gap: 1rem;
+  max-width: 24rem;
+  margin-bottom: 1.5rem;
+}
+
+.key-form input {
+  display: block;
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+
+.key-form input:focus {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  outline-offset: 0;
+}
+
 .logs-head code {
   font-size: 0.875em;
 }

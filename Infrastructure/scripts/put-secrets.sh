@@ -28,6 +28,8 @@ DEV_OPENROUTER_API_KEY:/climate-chat/dev/openrouter-api-key
 INGEST_OPENROUTER_API_KEY:/climate-chat/ingest/openrouter-api-key
 PROD_LOG_HASH_KEY:/climate-chat/prod/log-hash-key
 DEV_LOG_HASH_KEY:/climate-chat/dev/log-hash-key
+PROD_ADMIN_KEY:/climate-chat/prod/admin-key
+DEV_ADMIN_KEY:/climate-chat/dev/admin-key
 "
 
 # Value of KEY from the file, read without sourcing it (so nothing in it is executed).
