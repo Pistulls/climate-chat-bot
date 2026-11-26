@@ -9,7 +9,12 @@ interface TurnstileOptions {
   "expired-callback": () => void;
   "error-callback": () => void;
   "refresh-expired": "auto" | "manual" | "never";
+  appearance: Appearance;
 }
+
+/** "always" shows the widget; "interaction-only" keeps it hidden unless Cloudflare needs
+ * the visitor to tick it. */
+export type Appearance = "always" | "interaction-only";
 
 interface Turnstile {
   render(el: HTMLElement, options: TurnstileOptions): string;
@@ -52,6 +57,7 @@ export function renderWidget(
   el: HTMLElement,
   siteKey: string,
   onToken: (token: string | null) => void,
+  appearance: Appearance = "always",
 ): string {
   if (!window.turnstile) throw new Error("Turnstile isn't loaded.");
   return window.turnstile.render(el, {
@@ -61,6 +67,7 @@ export function renderWidget(
     "expired-callback": () => onToken(null),
     "error-callback": () => onToken(null),
     "refresh-expired": "auto",
+    appearance,
   });
 }
 
