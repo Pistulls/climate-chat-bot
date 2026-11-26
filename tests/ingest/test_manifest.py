@@ -1,4 +1,5 @@
 import datetime as dt
+import json
 import re
 
 import pytest
@@ -9,6 +10,7 @@ from climate_chat.ingest.manifest import (
     load_manifest,
     missing_files,
     parse_manifest,
+    public_sources,
     to_ingest,
 )
 
@@ -172,3 +174,27 @@ class TestSelection:
     def test_missing_files(self, tmp_path):
         (tmp_path / "05-report.pdf").write_bytes(b"%PDF")
         assert [s.id for s in missing_files(self.sources, tmp_path)] == ["06", "10"]
+
+
+# --- The UI's copy of the list (ui/src/sources.json, from scripts/export_sources.py) ---
+
+
+def test_public_sources_lists_only_ingested_sources_with_public_fields():
+    sources = parse(
+        entry(id="01", file="01-a.pdf"),
+        entry(id="02", file="02-b.pdf", ingest=False),
+        entry(id="03", file="03-c.pdf", snapshot=True, captured=dt.date(2026, 11, 22)),
+    )
+    listed = public_sources(sources)
+    assert [s["id"] for s in listed] == ["01", "03"]
+    assert set(listed[0]) == {"id", "title", "url", "type", "published", "licence", "captured"}
+    assert listed[0]["captured"] is None
+    assert listed[1]["captured"] == "2026-11-22"
+
+
+def test_ui_sources_json_matches_the_manifest():
+    """Fails when manifest.toml changes without re-running scripts/export_sources.py."""
+    path = repo_root() / "ui" / "src" / "sources.json"
+    assert json.loads(path.read_text()) == public_sources(load_manifest()), (
+        "ui/src/sources.json is out of date: run uv run python scripts/export_sources.py"
+    )

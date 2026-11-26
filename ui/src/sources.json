@@ -1,0 +1,353 @@
+[
+  {
+    "id": "01",
+    "title": "IPCC AR6 Synthesis Report: Summary for Policymakers (2023)",
+    "url": "https://www.ipcc.ch/report/ar6/syr/summary-for-policymakers/",
+    "type": "assessment",
+    "published": 2023,
+    "licence": "restricted",
+    "captured": null
+  },
+  {
+    "id": "02",
+    "title": "IPCC AR6 WGI: The Physical Science Basis, SPM (2021)",
+    "url": "https://www.ipcc.ch/report/ar6/wg1/downloads/report/IPCC_AR6_WGI_SPM.pdf",
+    "type": "assessment",
+    "published": 2021,
+    "licence": "unverified",
+    "captured": null
+  },
+  {
+    "id": "03",
+    "title": "Climate Change: Evidence and Causes, Update 2020 (Royal Society & US NAS)",
+    "url": "https://nap.nationalacademies.org/catalog/25733",
+    "type": "assessment",
+    "published": 2020,
+    "licence": "unverified",
+    "captured": null
+  },
+  {
+    "id": "04",
+    "title": "Indicators of Global Climate Change 2025 (Forster et al., ESSD 2026)",
+    "url": "https://essd.copernicus.org/articles/18/3889/2026/",
+    "type": "assessment",
+    "published": 2026,
+    "licence": "cc-by",
+    "captured": null
+  },
+  {
+    "id": "05",
+    "title": "WMO State of the Global Climate 2025",
+    "url": "https://library.wmo.int/idurl/4/69807",
+    "type": "annual_report",
+    "published": 2026,
+    "licence": "restricted",
+    "captured": null
+  },
+  {
+    "id": "06",
+    "title": "Copernicus Global Climate Highlights 2025",
+    "url": "https://climate.copernicus.eu/sites/default/files/custom-uploads/GCH-2025/GCH2025-full-report.pdf",
+    "type": "annual_report",
+    "published": 2026,
+    "licence": "unverified",
+    "captured": null
+  },
+  {
+    "id": "07",
+    "title": "NASA GISS Surface Temperature Analysis (GISTEMP v4)",
+    "url": "https://data.giss.nasa.gov/gistemp/",
+    "type": "data",
+    "published": 2026,
+    "licence": "gov",
+    "captured": "2026-11-22"
+  },
+  {
+    "id": "08",
+    "title": "Berkeley Earth temperature data",
+    "url": "https://berkeleyearth.org/data/",
+    "type": "data",
+    "published": 2026,
+    "licence": "non-commercial",
+    "captured": "2026-11-22"
+  },
+  {
+    "id": "09",
+    "title": "NOAA GML: Trends in Atmospheric CO2",
+    "url": "https://gml.noaa.gov/ccgg/trends/",
+    "type": "data",
+    "published": 2026,
+    "licence": "gov",
+    "captured": "2026-11-22"
+  },
+  {
+    "id": "11",
+    "title": "Global Carbon Budget 2025 (Friedlingstein et al., ESSD)",
+    "url": "https://essd.copernicus.org/articles/18/3211/2026/essd-18-3211-2026-assets.html",
+    "type": "data",
+    "published": 2026,
+    "licence": "cc-by",
+    "captured": null
+  },
+  {
+    "id": "12",
+    "title": "Hausfather et al. 2020, Evaluating past climate model projections (GRL)",
+    "url": "https://doi.org/10.1029/2019GL085378",
+    "type": "paper",
+    "published": 2020,
+    "licence": "restricted",
+    "captured": null
+  },
+  {
+    "id": "13",
+    "title": "Cook et al. 2013, Quantifying the consensus (ERL)",
+    "url": "https://iopscience.iop.org/article/10.1088/1748-9326/8/2/024024",
+    "type": "consensus",
+    "published": 2013,
+    "licence": "cc-by",
+    "captured": null
+  },
+  {
+    "id": "14",
+    "title": "Lynas et al. 2021, Greater than 99% consensus (ERL)",
+    "url": "https://doi.org/10.1088/1748-9326/ac2966",
+    "type": "consensus",
+    "published": 2021,
+    "licence": "cc-by",
+    "captured": null
+  },
+  {
+    "id": "15",
+    "title": "Cook et al. 2026, Impact of Skeptical Science rebuttals (Geoscience Communication)",
+    "url": "https://gc.copernicus.org/articles/9/145/2026/",
+    "type": "paper",
+    "published": 2026,
+    "licence": "cc-by",
+    "captured": null
+  },
+  {
+    "id": "16",
+    "title": "The Debunking Handbook 2020 (Lewandowsky, Cook et al.)",
+    "url": "https://www.climatechangecommunication.org/debunking-handbook-2020/",
+    "type": "method",
+    "published": 2020,
+    "licence": "unverified",
+    "captured": null
+  },
+  {
+    "id": "17",
+    "title": "Cook, Lewandowsky & Ecker 2017, Neutralizing misinformation through inoculation (PLOS ONE)",
+    "url": "https://doi.org/10.1371/journal.pone.0175799",
+    "type": "paper",
+    "published": 2017,
+    "licence": "cc-by",
+    "captured": null
+  },
+  {
+    "id": "18",
+    "title": "Coan et al. 2021, Computer-assisted classification of contrarian claims (CARDS)",
+    "url": "https://www.nature.com/articles/s41598-021-01714-4",
+    "type": "taxonomy",
+    "published": 2021,
+    "licence": "cc-by",
+    "captured": null
+  },
+  {
+    "id": "19",
+    "title": "IEA Global EV Outlook 2026",
+    "url": "https://www.iea.org/reports/global-ev-outlook-2026/electric-vehicle-batteries",
+    "type": "energy",
+    "published": 2026,
+    "licence": "cc-by",
+    "captured": null
+  },
+  {
+    "id": "20",
+    "title": "IEA commentary: Global battery markets are growing strongly (2026)",
+    "url": "https://www.iea.org/commentaries/global-battery-markets-are-growing-strongly-and-so-are-the-supply-risks",
+    "type": "energy",
+    "published": 2026,
+    "licence": "cc-by",
+    "captured": null
+  },
+  {
+    "id": "21",
+    "title": "Ziegler & Trancik 2021, Re-examining rates of lithium-ion battery improvement and cost decline",
+    "url": "https://arxiv.org/abs/2007.13920",
+    "type": "energy",
+    "published": 2020,
+    "licence": "non-commercial",
+    "captured": null
+  },
+  {
+    "id": "22",
+    "title": "IRENA Renewable Power Generation Costs in 2024",
+    "url": "https://www.irena.org/Publications/2025/Jun/Renewable-Power-Generation-Costs-in-2024",
+    "type": "energy",
+    "published": 2025,
+    "licence": "non-commercial",
+    "captured": null
+  },
+  {
+    "id": "23",
+    "title": "IRENA Renewable Capacity Statistics 2026",
+    "url": "https://www.irena.org/Publications",
+    "type": "energy",
+    "published": 2026,
+    "licence": "non-commercial",
+    "captured": null
+  },
+  {
+    "id": "24",
+    "title": "Ember Global Electricity Review 2026",
+    "url": "https://ember-energy.org/latest-insights/global-electricity-review-2026/",
+    "type": "energy",
+    "published": 2026,
+    "licence": "cc-by",
+    "captured": null
+  },
+  {
+    "id": "25",
+    "title": "Ember Electricity Data Explorer",
+    "url": "https://ember-energy.org/data/electricity-data-explorer/",
+    "type": "energy",
+    "published": 2026,
+    "licence": "cc-by",
+    "captured": "2026-11-22"
+  },
+  {
+    "id": "26",
+    "title": "Our World in Data: Energy dataset",
+    "url": "https://github.com/owid/energy-data",
+    "type": "energy",
+    "published": 2026,
+    "licence": "cc-by",
+    "captured": "2026-11-22"
+  },
+  {
+    "id": "27",
+    "title": "EIA Gasoline and Diesel Fuel Update",
+    "url": "https://www.eia.gov/petroleum/gasdiesel/",
+    "type": "energy",
+    "published": 2026,
+    "licence": "gov",
+    "captured": "2026-11-22"
+  },
+  {
+    "id": "28",
+    "title": "UK DESNZ Weekly road fuel prices",
+    "url": "https://www.gov.uk/government/statistics/weekly-road-fuel-prices",
+    "type": "energy",
+    "published": 2026,
+    "licence": "gov",
+    "captured": "2026-11-22"
+  },
+  {
+    "id": "29",
+    "title": "European Commission Weekly Oil Bulletin",
+    "url": "https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en",
+    "type": "energy",
+    "published": 2026,
+    "licence": "open",
+    "captured": "2026-11-22"
+  },
+  {
+    "id": "30",
+    "title": "ONS: Energy efficiency of housing in England and Wales, 2025",
+    "url": "https://www.ons.gov.uk/peoplepopulationandcommunity/housing/articles/energyefficiencyofhousinginenglandandwales/2025",
+    "type": "energy",
+    "published": 2026,
+    "licence": "gov",
+    "captured": null
+  },
+  {
+    "id": "31",
+    "title": "English Housing Survey 2024 to 2025: Housing quality and energy efficiency",
+    "url": "https://www.gov.uk/government/statistics/chapters-for-english-housing-survey-2024-to-2025-headline-findings-on-housing-quality-and-energy-efficiency",
+    "type": "energy",
+    "published": 2026,
+    "licence": "gov",
+    "captured": null
+  },
+  {
+    "id": "32",
+    "title": "Energy Performance of Buildings Certificates statistics, October to December 2025 (MHCLG)",
+    "url": "https://www.gov.uk/government/statistics/energy-performance-of-building-certificates-in-england-and-wales-october-to-december-2025/energy-performance-of-buildings-certificates-statistical-release-october-to-december-2025-england-and-wales",
+    "type": "energy",
+    "published": 2026,
+    "licence": "gov",
+    "captured": "2026-11-24"
+  },
+  {
+    "id": "33",
+    "title": "Ofgem: Energy price cap explained",
+    "url": "https://www.ofgem.gov.uk/information-consumers/energy-advice-households/energy-price-cap-explained",
+    "type": "energy",
+    "published": 2026,
+    "licence": "gov",
+    "captured": "2026-11-24"
+  },
+  {
+    "id": "34",
+    "title": "DESNZ Quarterly Energy Prices, September 2026",
+    "url": "https://assets.publishing.service.gov.uk/media/6aba2810fe72ed1e2b02f0e7/Quarterly_Energy_Prices_September_2026.pdf",
+    "type": "energy",
+    "published": 2026,
+    "licence": "gov",
+    "captured": null
+  },
+  {
+    "id": "36",
+    "title": "Ofgem Boiler Upgrade Scheme Annual Report 2025 to 2026",
+    "url": "https://www.ofgem.gov.uk/sites/default/files/2026-07/BUS_Annual_Report_2025-26-20260730085029.pdf",
+    "type": "energy",
+    "published": 2026,
+    "licence": "gov",
+    "captured": null
+  },
+  {
+    "id": "37",
+    "title": "HMRC Advisory fuel rates",
+    "url": "https://www.gov.uk/guidance/advisory-fuel-rates",
+    "type": "energy",
+    "published": 2026,
+    "licence": "gov",
+    "captured": "2026-11-24"
+  },
+  {
+    "id": "38",
+    "title": "DESNZ Electricity Generation Costs 2025",
+    "url": "https://www.gov.uk/government/publications/electricity-generation-costs-2025",
+    "type": "energy",
+    "published": 2026,
+    "licence": "gov",
+    "captured": null
+  },
+  {
+    "id": "39",
+    "title": "Contracts for Difference Allocation Round 7 results",
+    "url": "https://www.gov.uk/government/publications/contracts-for-difference-cfd-allocation-round-7-results",
+    "type": "energy",
+    "published": 2026,
+    "licence": "gov",
+    "captured": null
+  },
+  {
+    "id": "40",
+    "title": "DUKES 2026, Chapter 5: Electricity",
+    "url": "https://www.gov.uk/government/statistics/electricity-chapter-5-digest-of-united-kingdom-energy-statistics-dukes",
+    "type": "energy",
+    "published": 2026,
+    "licence": "gov",
+    "captured": null
+  },
+  {
+    "id": "41",
+    "title": "DESNZ Energy Innovation Needs Assessment 2025: Energy storage",
+    "url": "https://assets.publishing.service.gov.uk/media/69449d0c9273c48f554cf642/einas-2025-energy-storage.pdf",
+    "type": "energy",
+    "published": 2025,
+    "licence": "gov",
+    "captured": null
+  }
+]

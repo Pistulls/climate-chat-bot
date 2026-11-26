@@ -11,6 +11,11 @@ if (location.pathname === "/logs") {
   void import("./LogsPage.tsx").then(({ default: LogsPage }) => {
     render(() => <LogsPage />, root);
   });
+} else if (location.pathname === "/sources") {
+  // The list of sources the bot cites, also its own chunk.
+  void import("./SourcesPage.tsx").then(({ default: SourcesPage }) => {
+    render(() => <SourcesPage />, root);
+  });
 } else {
   render(() => <App />, root);
 }

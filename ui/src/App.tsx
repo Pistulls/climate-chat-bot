@@ -10,7 +10,7 @@
 import { createSignal, For, onSettled, Show } from "solid-js";
 
 import { CAPS, type ChatResult, isLinkable, type Platform, postChat, type Style } from "./api.ts";
-import { EXAMPLES } from "./examples.ts";
+import { EXAMPLES, randomExample } from "./examples.ts";
 import Scene from "./Scene.tsx";
 import { charCount } from "./text.ts";
 import Widget from "./Widget.tsx";
@@ -20,11 +20,22 @@ const PLATFORMS: [Platform, string][] = [
   ["youtube", "YouTube"],
   ["facebook", "Facebook"],
 ];
+// Why the platform matters. The numbers are the service's reply limits
+// (PLATFORM_LENGTH in src/climate_chat/service/prompts.py): keep them in step.
+const PLATFORM_INFO =
+  "Replies are sized for where you'll post them: up to 280 characters on X, and up to 500 on YouTube and Facebook.";
 const STYLES: [Style, string][] = [
   ["match", "Match their tone"],
   ["neutral", "Neutral"],
 ];
 const FORM_DELAY_MS = 4000;
+
+const WAIT_STEP_MS = 3000;
+const WAIT_LABELS = [
+  "Writing a sourced reply…",
+  "This is taking a while, I wonder why? 🤨",
+  "Oh, it's because I don't want to pay the big money for the fast models when it's public on the internet 😜",
+];
 
 function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -43,7 +54,8 @@ function pagesLabel(pages: string): string {
 }
 
 export default function App() {
-  const [comment, setComment] = createSignal("");
+  // Starts with a random example, so a first visit can try it in one click.
+  const [comment, setComment] = createSignal(randomExample());
   const [subject, setSubject] = createSignal("");
   const [thread, setThread] = createSignal("");
   const [platform, setPlatform] = createSignal<Platform>("youtube");
@@ -92,6 +104,28 @@ export default function App() {
     return () => window.removeEventListener("resize", placeCard);
   });
 
+  // The Platform info tooltip: shown while hovered, while focused from the keyboard, or
+  // after a click or tap (for touch screens) until Escape or a press anywhere else.
+  const [infoHovered, setInfoHovered] = createSignal(false);
+  const [infoFocused, setInfoFocused] = createSignal(false);
+  const [infoPinned, setInfoPinned] = createSignal(false);
+  const platformInfoOpen = () => infoHovered() || infoFocused() || infoPinned();
+  let platformInfoButton: HTMLButtonElement | undefined;
+
+  function closePlatformInfo() {
+    setInfoHovered(false);
+    setInfoFocused(false);
+    setInfoPinned(false);
+  }
+
+  onSettled(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      if (!platformInfoButton?.contains(e.target as Node)) setInfoPinned(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  });
+
   let examplesDialog: HTMLDialogElement | undefined;
 
   /** Fills the comment box with an example, replacing what was there. */
@@ -105,7 +139,11 @@ export default function App() {
     setOpen(true);
     if (prefersReducedMotion()) setSettled(true);
     // The button is gone, so move focus to where the visitor will type next.
-    requestAnimationFrame(() => commentBox?.focus({ preventScroll: true }));
+    // Selected, so pasting or typing your own comment replaces the example.
+    requestAnimationFrame(() => {
+      commentBox?.focus({ preventScroll: true });
+      commentBox?.select();
+    });
   }
 
   const overCap = () =>
@@ -121,8 +159,11 @@ export default function App() {
     const r = result();
     return r && !r.ok ? r : null;
   };
+  // The button's words while a reply is being written, moving on every WAIT_STEP_MS: the
+  // cheap models can be slow, so the page owns up to it.
+  const [waitStage, setWaitStage] = createSignal(0);
   const buttonLabel = () => {
-    if (busy()) return "Writing a sourced reply…";
+    if (busy()) return WAIT_LABELS[waitStage()];
     if (token() === null) return "Waiting for the bot check…";
     return "Get reply";
   };
@@ -133,15 +174,24 @@ export default function App() {
     setBusy(true);
     setResult(null);
     setCopied(false);
-    const r = await postChat(
-      { comment: comment(), subject: subject(), thread: thread(), platform: platform(), style: style() },
-      t,
+    setWaitStage(0);
+    const timers = WAIT_LABELS.slice(1).map((_, i) =>
+      setTimeout(() => setWaitStage(i + 1), WAIT_STEP_MS * (i + 1)),
     );
-    setResult(r);
-    setBusy(false);
-    // Tokens are single-use: spend this one and start getting the next.
-    setToken(null);
-    resetFormWidget?.();
+    try {
+      const r = await postChat(
+        { comment: comment(), subject: subject(), thread: thread(), platform: platform(), style: style() },
+        t,
+      );
+      setResult(r);
+    } finally {
+      timers.forEach(clearTimeout);
+      setWaitStage(0);
+      setBusy(false);
+      // Tokens are single-use: spend this one and start getting the next.
+      setToken(null);
+      resetFormWidget?.();
+    }
   }
 
   function tryAnother() {
@@ -159,6 +209,15 @@ export default function App() {
   return (
     <>
       <Scene />
+      <a class="sources-link" href="/sources">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z" />
+          <path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5" />
+          <path d="M8 7.5h8M8 11h6" />
+        </svg>
+        <span>Sources</span>
+      </a>
       <main class={["overlay", { "top-anchored": showForm() }]}>
         <Show when={!showForm()}>
           <section class={["card", "gate", { leaving: verified() }]} aria-hidden={verified() ? "true" : undefined}>
@@ -272,7 +331,50 @@ export default function App() {
 
                   <div class="choices">
                     <fieldset>
-                      <legend>Platform</legend>
+                      <legend>Response Tone</legend>
+                      <div class="segments">
+                        <For each={STYLES}>
+                          {([value, label]) => (
+                            <label class="option">
+                              <input
+                                type="radio"
+                                name="style"
+                                checked={style() === value}
+                                onChange={() => setStyle(value)}
+                              />
+                              {label}
+                            </label>
+                          )}
+                        </For>
+                      </div>
+                    </fieldset>
+
+                    <fieldset aria-labelledby="platform-label">
+                      <legend>
+                        <span id="platform-label">Platform</span>
+                        <button
+                          type="button"
+                          class="info"
+                          ref={platformInfoButton}
+                          aria-label="Why choose a platform?"
+                          aria-describedby="platform-info"
+                          onClick={() => setInfoPinned(!infoPinned())}
+                          onPointerEnter={() => setInfoHovered(true)}
+                          onPointerLeave={() => setInfoHovered(false)}
+                          onFocus={(e) => setInfoFocused(e.currentTarget.matches(":focus-visible"))}
+                          onBlur={() => setInfoFocused(false)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") closePlatformInfo();
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="9.5" />
+                            <path d="M12 11v5.5" />
+                            <path d="M12 7.6v.01" />
+                          </svg>
+                        </button>
+                      </legend>
                       <div class="segments">
                         <For each={PLATFORMS}>
                           {([value, label]) => (
@@ -290,24 +392,9 @@ export default function App() {
                       </div>
                     </fieldset>
 
-                    <fieldset>
-                      <legend>Style</legend>
-                      <div class="segments">
-                        <For each={STYLES}>
-                          {([value, label]) => (
-                            <label class="option">
-                              <input
-                                type="radio"
-                                name="style"
-                                checked={style() === value}
-                                onChange={() => setStyle(value)}
-                              />
-                              {label}
-                            </label>
-                          )}
-                        </For>
-                      </div>
-                    </fieldset>
+                    <p id="platform-info" role="tooltip" class="tooltip" hidden={!platformInfoOpen()}>
+                      {PLATFORM_INFO}
+                    </p>
                   </div>
 
                   <Widget
@@ -325,7 +412,7 @@ export default function App() {
                     </p>
                   </Show>
 
-                  <button type="submit" disabled={!ready()}>
+                  <button type="submit" disabled={!ready()} aria-busy={busy() ? "true" : undefined}>
                     {buttonLabel()}
                   </button>
                 </form>
