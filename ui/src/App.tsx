@@ -20,6 +20,10 @@ const PLATFORMS: [Platform, string][] = [
   ["youtube", "YouTube"],
   ["facebook", "Facebook"],
 ];
+// Why the platform matters. The numbers are the service's reply limits
+// (PLATFORM_LENGTH in src/climate_chat/service/prompts.py): keep them in step.
+const PLATFORM_INFO =
+  "Replies are sized for where you'll post them: up to 280 characters on X, and up to 500 on YouTube and Facebook.";
 const STYLES: [Style, string][] = [
   ["match", "Match their tone"],
   ["neutral", "Neutral"],
@@ -98,6 +102,28 @@ export default function App() {
   onSettled(() => {
     window.addEventListener("resize", placeCard);
     return () => window.removeEventListener("resize", placeCard);
+  });
+
+  // The Platform info tooltip: shown while hovered, while focused from the keyboard, or
+  // after a click or tap (for touch screens) until Escape or a press anywhere else.
+  const [infoHovered, setInfoHovered] = createSignal(false);
+  const [infoFocused, setInfoFocused] = createSignal(false);
+  const [infoPinned, setInfoPinned] = createSignal(false);
+  const platformInfoOpen = () => infoHovered() || infoFocused() || infoPinned();
+  let platformInfoButton: HTMLButtonElement | undefined;
+
+  function closePlatformInfo() {
+    setInfoHovered(false);
+    setInfoFocused(false);
+    setInfoPinned(false);
+  }
+
+  onSettled(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      if (!platformInfoButton?.contains(e.target as Node)) setInfoPinned(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
   });
 
   let examplesDialog: HTMLDialogElement | undefined;
@@ -183,6 +209,15 @@ export default function App() {
   return (
     <>
       <Scene />
+      <a class="sources-link" href="/sources">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z" />
+          <path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5" />
+          <path d="M8 7.5h8M8 11h6" />
+        </svg>
+        <span>Sources</span>
+      </a>
       <main class={["overlay", { "top-anchored": showForm() }]}>
         <Show when={!showForm()}>
           <section class={["card", "gate", { leaving: verified() }]} aria-hidden={verified() ? "true" : undefined}>
@@ -296,7 +331,50 @@ export default function App() {
 
                   <div class="choices">
                     <fieldset>
-                      <legend>Platform</legend>
+                      <legend>Response Tone</legend>
+                      <div class="segments">
+                        <For each={STYLES}>
+                          {([value, label]) => (
+                            <label class="option">
+                              <input
+                                type="radio"
+                                name="style"
+                                checked={style() === value}
+                                onChange={() => setStyle(value)}
+                              />
+                              {label}
+                            </label>
+                          )}
+                        </For>
+                      </div>
+                    </fieldset>
+
+                    <fieldset aria-labelledby="platform-label">
+                      <legend>
+                        <span id="platform-label">Platform</span>
+                        <button
+                          type="button"
+                          class="info"
+                          ref={platformInfoButton}
+                          aria-label="Why choose a platform?"
+                          aria-describedby="platform-info"
+                          onClick={() => setInfoPinned(!infoPinned())}
+                          onPointerEnter={() => setInfoHovered(true)}
+                          onPointerLeave={() => setInfoHovered(false)}
+                          onFocus={(e) => setInfoFocused(e.currentTarget.matches(":focus-visible"))}
+                          onBlur={() => setInfoFocused(false)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") closePlatformInfo();
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="9.5" />
+                            <path d="M12 11v5.5" />
+                            <path d="M12 7.6v.01" />
+                          </svg>
+                        </button>
+                      </legend>
                       <div class="segments">
                         <For each={PLATFORMS}>
                           {([value, label]) => (
@@ -314,24 +392,9 @@ export default function App() {
                       </div>
                     </fieldset>
 
-                    <fieldset>
-                      <legend>Style</legend>
-                      <div class="segments">
-                        <For each={STYLES}>
-                          {([value, label]) => (
-                            <label class="option">
-                              <input
-                                type="radio"
-                                name="style"
-                                checked={style() === value}
-                                onChange={() => setStyle(value)}
-                              />
-                              {label}
-                            </label>
-                          )}
-                        </For>
-                      </div>
-                    </fieldset>
+                    <p id="platform-info" role="tooltip" class="tooltip" hidden={!platformInfoOpen()}>
+                      {PLATFORM_INFO}
+                    </p>
                   </div>
 
                   <Widget

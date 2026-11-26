@@ -166,3 +166,21 @@ def missing_files(sources: Iterable[Source], docs: Path | None = None) -> list[S
     """Sources whose PDF isn't in sources/docs/ (the folder is gitignored)."""
     docs = docs or docs_dir()
     return [s for s in sources if not s.path(docs).is_file()]
+
+
+def public_sources(sources: Iterable[Source]) -> list[dict[str, Any]]:
+    """The UI's list of sources (ui/src/sources.json): only those in the index, since replies
+    can only cite those, and only the fields a reader needs. File names stay out."""
+    return [
+        {
+            "id": s.id,
+            "title": s.title,
+            "url": s.url,
+            "type": s.type,
+            "published": s.published,
+            "licence": s.licence,
+            "captured": s.captured.isoformat() if s.captured else None,
+        }
+        for s in sources
+        if s.ingest
+    ]
