@@ -62,6 +62,13 @@ data "aws_iam_policy_document" "api" {
     resources = [var.data_stores.logs_table_arn]
   }
 
+  # GET /api/logs (admin key only) pages through one day's partition at a time.
+  statement {
+    sid       = "LogRead"
+    actions   = ["dynamodb:Query"]
+    resources = [var.data_stores.logs_table_arn]
+  }
+
   statement {
     sid       = "RateLimits"
     actions   = ["dynamodb:UpdateItem", "dynamodb:GetItem"]
