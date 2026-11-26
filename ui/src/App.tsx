@@ -1,12 +1,18 @@
 // The one-shot page (Project/Plans/04.UI.md, "The page"). Markup and layout only: the
 // logic lives in api.ts and text.ts, the look in style.css.
 // Everything from the API is rendered as text, never as HTML.
+//
+// Opening sequence: the road scene plays behind a bot-check card. Once the check passes,
+// the card fades away and the form fades in, no sooner than FORM_DELAY_MS after opening.
+// The gate's token only lets the visitor in. Each request spends a token from the form's
+// own widget, which stays hidden unless Cloudflare wants another tick.
 
-import { createSignal, For, onSettled, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 
 import { CAPS, type ChatResult, isLinkable, type Platform, postChat, type Style } from "./api.ts";
+import Scene from "./Scene.tsx";
 import { charCount } from "./text.ts";
-import { loadTurnstile, removeWidget, renderWidget, resetWidget } from "./turnstile.ts";
+import Widget from "./Widget.tsx";
 
 const PLATFORMS: [Platform, string][] = [
   ["x", "X"],
@@ -17,7 +23,11 @@ const STYLES: [Style, string][] = [
   ["match", "Match their tone"],
   ["neutral", "Neutral"],
 ];
-const SITE_KEY: string = import.meta.env.VITE_TURNSTILE_SITE_KEY;
+const FORM_DELAY_MS = 4000;
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 function Count(props: { count: number; cap: number }) {
   return (
@@ -43,25 +53,22 @@ export default function App() {
   const [result, setResult] = createSignal<ChatResult | null>(null);
   const [copied, setCopied] = createSignal(false);
 
-  let widgetEl!: HTMLDivElement;
-  let widgetId: string | undefined;
+  // The gate: passed once, then the form takes over.
+  const [verified, setVerified] = createSignal(false);
+  const [gateFailed, setGateFailed] = createSignal(false);
+  const [showForm, setShowForm] = createSignal(false);
+  const openedAt = performance.now();
 
-  onSettled(() => {
-    let disposed = false;
-    loadTurnstile()
-      .then(() => {
-        if (disposed) return;
-        widgetId = renderWidget(widgetEl, SITE_KEY, (t) => {
-          setToken(t);
-          if (t) setWidgetFailed(false);
-        });
-      })
-      .catch(() => setWidgetFailed(true));
-    return () => {
-      disposed = true;
-      if (widgetId) removeWidget(widgetId);
-    };
-  });
+  function passGate() {
+    if (verified()) return;
+    setVerified(true);
+    const wait = prefersReducedMotion()
+      ? 0
+      : Math.max(0, FORM_DELAY_MS - (performance.now() - openedAt));
+    setTimeout(() => setShowForm(true), wait);
+  }
+
+  let resetFormWidget: (() => void) | undefined;
 
   const overCap = () =>
     charCount(comment()) > CAPS.comment ||
@@ -96,7 +103,7 @@ export default function App() {
     setBusy(false);
     // Tokens are single-use: spend this one and start getting the next.
     setToken(null);
-    if (widgetId) resetWidget(widgetId);
+    resetFormWidget?.();
   }
 
   function tryAnother() {
@@ -112,149 +119,184 @@ export default function App() {
   }
 
   return (
-    <main>
-      <h1>Climate Chat</h1>
-      <p class="intro">Paste a climate-sceptic comment and get a short, sourced reply.</p>
-
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send();
-        }}
-      >
-        <label class="field">
-          <span class="field-head">
-            Comment <Count count={charCount(comment())} cap={CAPS.comment} />
-          </span>
-          <textarea
-            rows={5}
-            required
-            value={comment()}
-            onInput={(e) => setComment(e.currentTarget.value)}
-          />
-        </label>
-
-        <details>
-          <summary>Add context (optional)</summary>
-          <label class="field">
-            <span class="field-head">
-              Posted under (a video title or topic)
-              <Count count={charCount(subject())} cap={CAPS.subject} />
-            </span>
-            <input value={subject()} onInput={(e) => setSubject(e.currentTarget.value)} />
-          </label>
-          <label class="field">
-            <span class="field-head">
-              Replying to (the message above it)
-              <Count count={charCount(thread())} cap={CAPS.thread} />
-            </span>
-            <textarea rows={3} value={thread()} onInput={(e) => setThread(e.currentTarget.value)} />
-          </label>
-        </details>
-
-        <div class="choices">
-          <fieldset>
-            <legend>Platform</legend>
-            <div class="segments">
-              <For each={PLATFORMS}>
-                {([value, label]) => (
-                  <label class="option">
-                    <input
-                      type="radio"
-                      name="platform"
-                      checked={platform() === value}
-                      onChange={() => setPlatform(value)}
-                    />
-                    {label}
-                  </label>
-                )}
-              </For>
-            </div>
-          </fieldset>
-
-          <fieldset>
-            <legend>Style</legend>
-            <div class="segments">
-              <For each={STYLES}>
-                {([value, label]) => (
-                  <label class="option">
-                    <input
-                      type="radio"
-                      name="style"
-                      checked={style() === value}
-                      onChange={() => setStyle(value)}
-                    />
-                    {label}
-                  </label>
-                )}
-              </For>
-            </div>
-          </fieldset>
-        </div>
-
-        <div ref={widgetEl} />
-        <Show when={widgetFailed()}>
-          <p class="notice" role="alert">
-            The bot check couldn't load. Please reload the page.
-          </p>
+    <>
+      <Scene />
+      <main class="overlay">
+        <Show when={!showForm()}>
+          <section class={["card", "gate", { leaving: verified() }]} aria-hidden={verified() ? "true" : undefined}>
+            <h1>Climate Chat</h1>
+            <p class="intro">
+              Get short, sourced replies to climate-sceptic comments. First, a quick check that
+              you're a person.
+            </p>
+            <Widget
+              appearance="always"
+              onToken={(t) => t && passGate()}
+              onLoadFailed={() => setGateFailed(true)}
+            />
+            <Show when={gateFailed()}>
+              <p class="notice" role="alert">
+                The bot check couldn't load. Please reload the page.
+              </p>
+            </Show>
+          </section>
         </Show>
 
-        <button type="submit" disabled={!ready()}>
-          {buttonLabel()}
-        </button>
-      </form>
+        <Show when={showForm()}>
+          <div class="card enter">
+            <h1>Climate Chat</h1>
+            <p class="intro">Paste a climate-sceptic comment and get a short, sourced reply.</p>
 
-      <Show when={failure()}>
-        {(f) => (
-          <section class="error" role="alert">
-            <p>{f().message}</p>
-            <Show when={f().retry}>
-              <button type="button" disabled={!ready()} onClick={() => void send()}>
-                {token() === null ? "Waiting for the bot check…" : "Retry"}
-              </button>
-            </Show>
-          </section>
-        )}
-      </Show>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void send();
+              }}
+            >
+              <label class="field">
+                <span class="field-head">
+                  Comment <Count count={charCount(comment())} cap={CAPS.comment} />
+                </span>
+                <textarea
+                  rows={5}
+                  required
+                  value={comment()}
+                  onInput={(e) => setComment(e.currentTarget.value)}
+                />
+              </label>
 
-      <Show when={reply()}>
-        {(r) => (
-          <section class="reply">
-            <h2>Reply</h2>
-            <p class="reply-text">{r().reply}</p>
-            <div class="reply-actions">
-              <button type="button" onClick={() => copy(r().reply)}>
-                {copied() ? "Copied" : "Copy"}
-              </button>
-              <button type="button" onClick={tryAnother}>
-                Try another
-              </button>
-            </div>
-            <Show when={r().fallacy}>
-              <p class="fallacy">Fallacy: {r().fallacy}</p>
-            </Show>
-            <Show when={r().citations.length > 0}>
-              <div class="sources">
-                <h3>Sources</h3>
-                <ol>
-                  <For each={r().citations}>
-                    {(c) => (
-                      <li>
-                        <Show when={isLinkable(c.url)} fallback={c.title}>
-                          <a href={c.url} target="_blank" rel="noopener noreferrer">
-                            {c.title}
-                          </a>
-                        </Show>
-                        , {pagesLabel(c.pages)}
-                      </li>
-                    )}
-                  </For>
-                </ol>
+              <details>
+                <summary>Add context (optional)</summary>
+                <label class="field">
+                  <span class="field-head">
+                    Posted under (a video title or topic)
+                    <Count count={charCount(subject())} cap={CAPS.subject} />
+                  </span>
+                  <input value={subject()} onInput={(e) => setSubject(e.currentTarget.value)} />
+                </label>
+                <label class="field">
+                  <span class="field-head">
+                    Replying to (the message above it)
+                    <Count count={charCount(thread())} cap={CAPS.thread} />
+                  </span>
+                  <textarea rows={3} value={thread()} onInput={(e) => setThread(e.currentTarget.value)} />
+                </label>
+              </details>
+
+              <div class="choices">
+                <fieldset>
+                  <legend>Platform</legend>
+                  <div class="segments">
+                    <For each={PLATFORMS}>
+                      {([value, label]) => (
+                        <label class="option">
+                          <input
+                            type="radio"
+                            name="platform"
+                            checked={platform() === value}
+                            onChange={() => setPlatform(value)}
+                          />
+                          {label}
+                        </label>
+                      )}
+                    </For>
+                  </div>
+                </fieldset>
+
+                <fieldset>
+                  <legend>Style</legend>
+                  <div class="segments">
+                    <For each={STYLES}>
+                      {([value, label]) => (
+                        <label class="option">
+                          <input
+                            type="radio"
+                            name="style"
+                            checked={style() === value}
+                            onChange={() => setStyle(value)}
+                          />
+                          {label}
+                        </label>
+                      )}
+                    </For>
+                  </div>
+                </fieldset>
               </div>
+
+              <Widget
+                appearance="interaction-only"
+                onToken={(t) => {
+                  setToken(t);
+                  if (t) setWidgetFailed(false);
+                }}
+                onLoadFailed={() => setWidgetFailed(true)}
+                onReady={(reset) => (resetFormWidget = reset)}
+              />
+              <Show when={widgetFailed()}>
+                <p class="notice" role="alert">
+                  The bot check couldn't load. Please reload the page.
+                </p>
+              </Show>
+
+              <button type="submit" disabled={!ready()}>
+                {buttonLabel()}
+              </button>
+            </form>
+
+            <Show when={failure()}>
+              {(f) => (
+                <section class="error" role="alert">
+                  <p>{f().message}</p>
+                  <Show when={f().retry}>
+                    <button type="button" disabled={!ready()} onClick={() => void send()}>
+                      {token() === null ? "Waiting for the bot check…" : "Retry"}
+                    </button>
+                  </Show>
+                </section>
+              )}
             </Show>
-          </section>
-        )}
-      </Show>
-    </main>
+
+            <Show when={reply()}>
+              {(r) => (
+                <section class="reply">
+                  <h2>Reply</h2>
+                  <p class="reply-text">{r().reply}</p>
+                  <div class="reply-actions">
+                    <button type="button" onClick={() => copy(r().reply)}>
+                      {copied() ? "Copied" : "Copy"}
+                    </button>
+                    <button type="button" onClick={tryAnother}>
+                      Try another
+                    </button>
+                  </div>
+                  <Show when={r().fallacy}>
+                    <p class="fallacy">Fallacy: {r().fallacy}</p>
+                  </Show>
+                  <Show when={r().citations.length > 0}>
+                    <div class="sources">
+                      <h3>Sources</h3>
+                      <ol>
+                        <For each={r().citations}>
+                          {(c) => (
+                            <li>
+                              <Show when={isLinkable(c.url)} fallback={c.title}>
+                                <a href={c.url} target="_blank" rel="noopener noreferrer">
+                                  {c.title}
+                                </a>
+                              </Show>
+                              , {pagesLabel(c.pages)}
+                            </li>
+                          )}
+                        </For>
+                      </ol>
+                    </div>
+                  </Show>
+                </section>
+              )}
+            </Show>
+          </div>
+        </Show>
+      </main>
+    </>
   );
 }
