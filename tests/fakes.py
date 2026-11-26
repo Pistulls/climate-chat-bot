@@ -50,3 +50,30 @@ class FakeS3Vectors:
                 {"key": "12-0003", "distance": 0.2, "metadata": {"source_id": "12"}},
             ]
         }
+
+
+class FakeLogTable:
+    """Holds items like the logs table: pk = day#YYYY-MM-DD, sk = time#request id.
+    `query` mimics DynamoDB: one partition, sorted by sk, Limit and LastEvaluatedKey."""
+
+    def __init__(self, items):
+        self.items = items
+        self.queries = []
+
+    def query(self, **kwargs):
+        self.queries.append(kwargs)
+        pk = kwargs["ExpressionAttributeValues"][":pk"]
+        rows = sorted(
+            (i for i in self.items if i["pk"] == pk),
+            key=lambda i: i["sk"],
+            reverse=not kwargs.get("ScanIndexForward", True),
+        )
+        start = kwargs.get("ExclusiveStartKey")
+        if start:
+            rows = rows[[r["sk"] for r in rows].index(start["sk"]) + 1 :]
+        limit = kwargs["Limit"]
+        page = rows[:limit]
+        result = {"Items": page}
+        if len(rows) > limit:
+            result["LastEvaluatedKey"] = {"pk": pk, "sk": page[-1]["sk"]}
+        return result
