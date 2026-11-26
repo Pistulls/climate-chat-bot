@@ -10,6 +10,7 @@
 import { createSignal, For, onSettled, Show } from "solid-js";
 
 import { CAPS, type ChatResult, isLinkable, type Platform, postChat, type Style } from "./api.ts";
+import { EXAMPLES } from "./examples.ts";
 import Scene from "./Scene.tsx";
 import { charCount } from "./text.ts";
 import Widget from "./Widget.tsx";
@@ -90,6 +91,15 @@ export default function App() {
     window.addEventListener("resize", placeCard);
     return () => window.removeEventListener("resize", placeCard);
   });
+
+  let examplesDialog: HTMLDialogElement | undefined;
+
+  /** Fills the comment box with an example, replacing what was there. */
+  function pickExample(text: string) {
+    setComment(text);
+    examplesDialog?.close();
+    commentBox?.focus();
+  }
 
   function openChat() {
     setOpen(true);
@@ -217,6 +227,18 @@ export default function App() {
                     void send();
                   }}
                 >
+                  <p class="examples-hint">
+                    See some{" "}
+                    <button
+                      type="button"
+                      class="link"
+                      aria-haspopup="dialog"
+                      onClick={() => examplesDialog?.showModal()}
+                    >
+                      examples
+                    </button>
+                  </p>
+
                   <label class="field">
                     <span class="field-head">
                       Comment <Count count={charCount(comment())} cap={CAPS.comment} />
@@ -364,6 +386,46 @@ export default function App() {
           </div>
         </Show>
       </main>
+
+      {/* A native modal: focus stays inside, Escape closes it, and it sits in the top
+          layer above the card. Clicking the backdrop (the dialog itself) closes it too. */}
+      <dialog
+        class="examples"
+        aria-labelledby="examples-title"
+        ref={examplesDialog}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) e.currentTarget.close();
+        }}
+      >
+        <div class="examples-panel">
+          <div class="examples-head">
+            <h2 id="examples-title">Example comments</h2>
+            <button
+              type="button"
+              class="close"
+              aria-label="Close"
+              onClick={() => examplesDialog?.close()}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </div>
+          <p class="examples-note">Choose one to put it in the comment box.</p>
+          <ul>
+            <For each={EXAMPLES}>
+              {(text) => (
+                <li>
+                  <button type="button" onClick={() => pickExample(text)}>
+                    {text}
+                  </button>
+                </li>
+              )}
+            </For>
+          </ul>
+        </div>
+      </dialog>
     </>
   );
 }
