@@ -10,7 +10,7 @@
 import { createSignal, For, onSettled, Show } from "solid-js";
 
 import { CAPS, type ChatResult, isLinkable, type Platform, postChat, type Style } from "./api.ts";
-import { EXAMPLES } from "./examples.ts";
+import { EXAMPLES, randomExample } from "./examples.ts";
 import Scene from "./Scene.tsx";
 import { charCount } from "./text.ts";
 import Widget from "./Widget.tsx";
@@ -50,7 +50,8 @@ function pagesLabel(pages: string): string {
 }
 
 export default function App() {
-  const [comment, setComment] = createSignal("");
+  // Starts with a random example, so a first visit can try it in one click.
+  const [comment, setComment] = createSignal(randomExample());
   const [subject, setSubject] = createSignal("");
   const [thread, setThread] = createSignal("");
   const [platform, setPlatform] = createSignal<Platform>("youtube");
@@ -112,7 +113,11 @@ export default function App() {
     setOpen(true);
     if (prefersReducedMotion()) setSettled(true);
     // The button is gone, so move focus to where the visitor will type next.
-    requestAnimationFrame(() => commentBox?.focus({ preventScroll: true }));
+    // Selected, so pasting or typing your own comment replaces the example.
+    requestAnimationFrame(() => {
+      commentBox?.focus({ preventScroll: true });
+      commentBox?.select();
+    });
   }
 
   const overCap = () =>
