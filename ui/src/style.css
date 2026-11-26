@@ -648,6 +648,14 @@ button[type="submit"] {
   color: #fff;
 }
 
+/* Busy, not unavailable: keep the waiting messages readable. */
+button[type="submit"][aria-busy="true"] {
+  max-width: 100%;
+  opacity: 1;
+  cursor: progress;
+  text-align: left;
+}
+
 button[type="submit"]:hover:not(:disabled) {
   border-color: var(--ink);
   background: var(--ink);

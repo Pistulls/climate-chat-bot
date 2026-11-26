@@ -149,13 +149,16 @@ class App:
         except BadCursor:
             return ApiError(400, "bad_cursor", "That page link is invalid.").to_response()
         except Exception as e:  # only the key holder sees this, so say what failed
-            traceback.print_exc()
+            traceback.print_exc()  # the full error, ARNs and all, goes to CloudWatch only
+            # An AWS error message names the account and role, so show just its code.
+            code = getattr(e, "response", {}).get("Error", {}).get("Code")
+            detail = code or str(e)
             hint = (
                 " Sign in to AWS (aws sso login) and try again."
                 if "token" in str(e).lower()
                 else ""
             )
-            message = f"Couldn't read {self.settings.logs_table}: {e}.{hint}"
+            message = f"Couldn't read {self.settings.logs_table}: {detail}.{hint}"
             return ApiError(503, "logs_unavailable", message).to_response()
         response = ok_response({"table": self.settings.logs_table, **page})
         response["headers"] = {**response["headers"], "cache-control": "no-store"}

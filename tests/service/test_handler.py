@@ -399,3 +399,28 @@ def test_logs_admin_key_failure_is_500(capsys):
 
     h.secrets.admin_key = broken
     assert h.call(logs_event())["statusCode"] == 500
+
+
+def test_logs_aws_error_shows_the_code_not_the_account_or_arn(capsys):
+    from botocore.exceptions import ClientError
+
+    class DeniedTable:
+        def query(self, **kwargs):
+            raise ClientError(
+                {
+                    "Error": {
+                        "Code": "AccessDeniedException",
+                        "Message": "User: arn:aws:sts::123456789012:assumed-role/x/x is not "
+                        "authorized to perform: dynamodb:Query",
+                    }
+                },
+                "Query",
+            )
+
+    h = logs_harness()
+    h.app.log_table = DeniedTable()
+    response = h.call(logs_event())
+    assert response["statusCode"] == 503
+    message = payload(response)["message"]
+    assert "AccessDeniedException" in message
+    assert "123456789012" not in message and "arn:" not in message
