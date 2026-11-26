@@ -105,6 +105,61 @@ body {
   }
 }
 
+/* The chat card hangs from a fixed top (App.tsx, placeCard) so it can grow downwards. */
+.overlay.top-anchored {
+  place-items: start center;
+  padding-top: 0;
+}
+
+/* Collapsed, the card is just this title-sized row. */
+.start {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-size: 1.75rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.start svg {
+  flex: none;
+  color: var(--accent);
+  transition: transform 0.2s ease;
+}
+
+.start:hover svg {
+  transform: translateY(2px);
+}
+
+/* Expands from nothing to the form's natural height (grid rows 0fr -> 1fr). Clipped
+   while it moves; unclipped once settled so focus rings at the edges show. */
+.expander {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.expander.open {
+  grid-template-rows: 1fr;
+}
+
+.expander-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.expander.settled .expander-inner {
+  overflow: visible;
+}
+
 /* An empty interaction-only widget takes no room until Cloudflare needs a tick. */
 .widget:empty {
   display: none;
@@ -112,7 +167,9 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .gate,
-  .card.enter {
+  .card.enter,
+  .expander,
+  .start svg {
     transition: none;
     animation: none;
   }

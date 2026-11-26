@@ -7,7 +7,7 @@
 // The gate's token only lets the visitor in. Each request spends a token from the form's
 // own widget, which stays hidden unless Cloudflare wants another tick.
 
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, For, onSettled, Show } from "solid-js";
 
 import { CAPS, type ChatResult, isLinkable, type Platform, postChat, type Style } from "./api.ts";
 import Scene from "./Scene.tsx";
@@ -70,6 +70,34 @@ export default function App() {
 
   let resetFormWidget: (() => void) | undefined;
 
+  // The chat card arrives collapsed to its title row ("Start Chat") and expands downwards
+  // on click. Its top is fixed where the full card's top would sit when centred, so the
+  // expansion never shifts it.
+  const [open, setOpen] = createSignal(false);
+  const [settled, setSettled] = createSignal(false); // expansion finished: stop clipping
+  const [cardTop, setCardTop] = createSignal(0);
+  let chatCard: HTMLDivElement | undefined;
+  let chatBodyInner: HTMLDivElement | undefined;
+  let commentBox: HTMLTextAreaElement | undefined;
+
+  function placeCard() {
+    if (open() || !chatCard || !chatBodyInner) return;
+    const fullHeight = chatCard.offsetHeight + chatBodyInner.scrollHeight;
+    setCardTop(Math.max(16, (window.innerHeight - fullHeight) / 2));
+  }
+
+  onSettled(() => {
+    window.addEventListener("resize", placeCard);
+    return () => window.removeEventListener("resize", placeCard);
+  });
+
+  function openChat() {
+    setOpen(true);
+    if (prefersReducedMotion()) setSettled(true);
+    // The button is gone, so move focus to where the visitor will type next.
+    requestAnimationFrame(() => commentBox?.focus({ preventScroll: true }));
+  }
+
   const overCap = () =>
     charCount(comment()) > CAPS.comment ||
     charCount(subject()) > CAPS.subject ||
@@ -121,7 +149,7 @@ export default function App() {
   return (
     <>
       <Scene />
-      <main class="overlay">
+      <main class={["overlay", { "top-anchored": showForm() }]}>
         <Show when={!showForm()}>
           <section class={["card", "gate", { leaving: verified() }]} aria-hidden={verified() ? "true" : undefined}>
             <h1>Climate Chat</h1>
@@ -143,157 +171,196 @@ export default function App() {
         </Show>
 
         <Show when={showForm()}>
-          <div class="card enter">
-            <h1>Climate Chat</h1>
-            <p class="intro">Paste a climate-sceptic comment and get a short, sourced reply.</p>
+          <div
+            class="card enter"
+            style={{ "margin-top": `${cardTop()}px` }}
+            ref={(el) => {
+              chatCard = el;
+              requestAnimationFrame(placeCard);
+            }}
+          >
+            <Show
+              when={open()}
+              fallback={
+                <button
+                  type="button"
+                  class="start"
+                  aria-expanded="false"
+                  aria-controls="chat-body"
+                  onClick={openChat}
+                >
+                  Start Chat
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+              }
+            >
+              <h1>Climate Chat</h1>
+            </Show>
 
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void send();
+            <div
+              id="chat-body"
+              class={["expander", { open: open(), settled: settled() }]}
+              inert={!open()}
+              onTransitionEnd={(e) => {
+                if (e.target === e.currentTarget && open()) setSettled(true);
               }}
             >
-              <label class="field">
-                <span class="field-head">
-                  Comment <Count count={charCount(comment())} cap={CAPS.comment} />
-                </span>
-                <textarea
-                  rows={5}
-                  required
-                  value={comment()}
-                  onInput={(e) => setComment(e.currentTarget.value)}
-                />
-              </label>
+              <div class="expander-inner" ref={chatBodyInner}>
+                <p class="intro">Paste a climate-sceptic comment and get a short, sourced reply.</p>
 
-              <details>
-                <summary>Add context (optional)</summary>
-                <label class="field">
-                  <span class="field-head">
-                    Posted under (a video title or topic)
-                    <Count count={charCount(subject())} cap={CAPS.subject} />
-                  </span>
-                  <input value={subject()} onInput={(e) => setSubject(e.currentTarget.value)} />
-                </label>
-                <label class="field">
-                  <span class="field-head">
-                    Replying to (the message above it)
-                    <Count count={charCount(thread())} cap={CAPS.thread} />
-                  </span>
-                  <textarea rows={3} value={thread()} onInput={(e) => setThread(e.currentTarget.value)} />
-                </label>
-              </details>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void send();
+                  }}
+                >
+                  <label class="field">
+                    <span class="field-head">
+                      Comment <Count count={charCount(comment())} cap={CAPS.comment} />
+                    </span>
+                    <textarea
+                      ref={commentBox}
+                      rows={5}
+                      required
+                      value={comment()}
+                      onInput={(e) => setComment(e.currentTarget.value)}
+                    />
+                  </label>
 
-              <div class="choices">
-                <fieldset>
-                  <legend>Platform</legend>
-                  <div class="segments">
-                    <For each={PLATFORMS}>
-                      {([value, label]) => (
-                        <label class="option">
-                          <input
-                            type="radio"
-                            name="platform"
-                            checked={platform() === value}
-                            onChange={() => setPlatform(value)}
-                          />
-                          {label}
-                        </label>
-                      )}
-                    </For>
-                  </div>
-                </fieldset>
+                  <details>
+                    <summary>Add context (optional)</summary>
+                    <label class="field">
+                      <span class="field-head">
+                        Posted under (a video title or topic)
+                        <Count count={charCount(subject())} cap={CAPS.subject} />
+                      </span>
+                      <input value={subject()} onInput={(e) => setSubject(e.currentTarget.value)} />
+                    </label>
+                    <label class="field">
+                      <span class="field-head">
+                        Replying to (the message above it)
+                        <Count count={charCount(thread())} cap={CAPS.thread} />
+                      </span>
+                      <textarea rows={3} value={thread()} onInput={(e) => setThread(e.currentTarget.value)} />
+                    </label>
+                  </details>
 
-                <fieldset>
-                  <legend>Style</legend>
-                  <div class="segments">
-                    <For each={STYLES}>
-                      {([value, label]) => (
-                        <label class="option">
-                          <input
-                            type="radio"
-                            name="style"
-                            checked={style() === value}
-                            onChange={() => setStyle(value)}
-                          />
-                          {label}
-                        </label>
-                      )}
-                    </For>
-                  </div>
-                </fieldset>
-              </div>
-
-              <Widget
-                appearance="interaction-only"
-                onToken={(t) => {
-                  setToken(t);
-                  if (t) setWidgetFailed(false);
-                }}
-                onLoadFailed={() => setWidgetFailed(true)}
-                onReady={(reset) => (resetFormWidget = reset)}
-              />
-              <Show when={widgetFailed()}>
-                <p class="notice" role="alert">
-                  The bot check couldn't load. Please reload the page.
-                </p>
-              </Show>
-
-              <button type="submit" disabled={!ready()}>
-                {buttonLabel()}
-              </button>
-            </form>
-
-            <Show when={failure()}>
-              {(f) => (
-                <section class="error" role="alert">
-                  <p>{f().message}</p>
-                  <Show when={f().retry}>
-                    <button type="button" disabled={!ready()} onClick={() => void send()}>
-                      {token() === null ? "Waiting for the bot check…" : "Retry"}
-                    </button>
-                  </Show>
-                </section>
-              )}
-            </Show>
-
-            <Show when={reply()}>
-              {(r) => (
-                <section class="reply">
-                  <h2>Reply</h2>
-                  <p class="reply-text">{r().reply}</p>
-                  <div class="reply-actions">
-                    <button type="button" onClick={() => copy(r().reply)}>
-                      {copied() ? "Copied" : "Copy"}
-                    </button>
-                    <button type="button" onClick={tryAnother}>
-                      Try another
-                    </button>
-                  </div>
-                  <Show when={r().fallacy}>
-                    <p class="fallacy">Fallacy: {r().fallacy}</p>
-                  </Show>
-                  <Show when={r().citations.length > 0}>
-                    <div class="sources">
-                      <h3>Sources</h3>
-                      <ol>
-                        <For each={r().citations}>
-                          {(c) => (
-                            <li>
-                              <Show when={isLinkable(c.url)} fallback={c.title}>
-                                <a href={c.url} target="_blank" rel="noopener noreferrer">
-                                  {c.title}
-                                </a>
-                              </Show>
-                              , {pagesLabel(c.pages)}
-                            </li>
+                  <div class="choices">
+                    <fieldset>
+                      <legend>Platform</legend>
+                      <div class="segments">
+                        <For each={PLATFORMS}>
+                          {([value, label]) => (
+                            <label class="option">
+                              <input
+                                type="radio"
+                                name="platform"
+                                checked={platform() === value}
+                                onChange={() => setPlatform(value)}
+                              />
+                              {label}
+                            </label>
                           )}
                         </For>
-                      </ol>
-                    </div>
+                      </div>
+                    </fieldset>
+
+                    <fieldset>
+                      <legend>Style</legend>
+                      <div class="segments">
+                        <For each={STYLES}>
+                          {([value, label]) => (
+                            <label class="option">
+                              <input
+                                type="radio"
+                                name="style"
+                                checked={style() === value}
+                                onChange={() => setStyle(value)}
+                              />
+                              {label}
+                            </label>
+                          )}
+                        </For>
+                      </div>
+                    </fieldset>
+                  </div>
+
+                  <Widget
+                    appearance="interaction-only"
+                    onToken={(t) => {
+                      setToken(t);
+                      if (t) setWidgetFailed(false);
+                    }}
+                    onLoadFailed={() => setWidgetFailed(true)}
+                    onReady={(reset) => (resetFormWidget = reset)}
+                  />
+                  <Show when={widgetFailed()}>
+                    <p class="notice" role="alert">
+                      The bot check couldn't load. Please reload the page.
+                    </p>
                   </Show>
-                </section>
-              )}
-            </Show>
+
+                  <button type="submit" disabled={!ready()}>
+                    {buttonLabel()}
+                  </button>
+                </form>
+
+                <Show when={failure()}>
+                  {(f) => (
+                    <section class="error" role="alert">
+                      <p>{f().message}</p>
+                      <Show when={f().retry}>
+                        <button type="button" disabled={!ready()} onClick={() => void send()}>
+                          {token() === null ? "Waiting for the bot check…" : "Retry"}
+                        </button>
+                      </Show>
+                    </section>
+                  )}
+                </Show>
+
+                <Show when={reply()}>
+                  {(r) => (
+                    <section class="reply">
+                      <h2>Reply</h2>
+                      <p class="reply-text">{r().reply}</p>
+                      <div class="reply-actions">
+                        <button type="button" onClick={() => copy(r().reply)}>
+                          {copied() ? "Copied" : "Copy"}
+                        </button>
+                        <button type="button" onClick={tryAnother}>
+                          Try another
+                        </button>
+                      </div>
+                      <Show when={r().fallacy}>
+                        <p class="fallacy">Fallacy: {r().fallacy}</p>
+                      </Show>
+                      <Show when={r().citations.length > 0}>
+                        <div class="sources">
+                          <h3>Sources</h3>
+                          <ol>
+                            <For each={r().citations}>
+                              {(c) => (
+                                <li>
+                                  <Show when={isLinkable(c.url)} fallback={c.title}>
+                                    <a href={c.url} target="_blank" rel="noopener noreferrer">
+                                      {c.title}
+                                    </a>
+                                  </Show>
+                                  , {pagesLabel(c.pages)}
+                                </li>
+                              )}
+                            </For>
+                          </ol>
+                        </div>
+                      </Show>
+                    </section>
+                  )}
+                </Show>
+              </div>
+            </div>
           </div>
         </Show>
       </main>
