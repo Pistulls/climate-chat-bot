@@ -26,6 +26,13 @@ const STYLES: [Style, string][] = [
 ];
 const FORM_DELAY_MS = 4000;
 
+const WAIT_STEP_MS = 3000;
+const WAIT_LABELS = [
+  "Writing a sourced reply…",
+  "This is taking a while, I wonder why? 🤨",
+  "Oh, it's because I don't want to pay the big money for the fast models when it's public on the internet 😜",
+];
+
 function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
@@ -121,8 +128,11 @@ export default function App() {
     const r = result();
     return r && !r.ok ? r : null;
   };
+  // The button's words while a reply is being written, moving on every WAIT_STEP_MS: the
+  // cheap models can be slow, so the page owns up to it.
+  const [waitStage, setWaitStage] = createSignal(0);
   const buttonLabel = () => {
-    if (busy()) return "Writing a sourced reply…";
+    if (busy()) return WAIT_LABELS[waitStage()];
     if (token() === null) return "Waiting for the bot check…";
     return "Get reply";
   };
@@ -133,15 +143,24 @@ export default function App() {
     setBusy(true);
     setResult(null);
     setCopied(false);
-    const r = await postChat(
-      { comment: comment(), subject: subject(), thread: thread(), platform: platform(), style: style() },
-      t,
+    setWaitStage(0);
+    const timers = WAIT_LABELS.slice(1).map((_, i) =>
+      setTimeout(() => setWaitStage(i + 1), WAIT_STEP_MS * (i + 1)),
     );
-    setResult(r);
-    setBusy(false);
-    // Tokens are single-use: spend this one and start getting the next.
-    setToken(null);
-    resetFormWidget?.();
+    try {
+      const r = await postChat(
+        { comment: comment(), subject: subject(), thread: thread(), platform: platform(), style: style() },
+        t,
+      );
+      setResult(r);
+    } finally {
+      timers.forEach(clearTimeout);
+      setWaitStage(0);
+      setBusy(false);
+      // Tokens are single-use: spend this one and start getting the next.
+      setToken(null);
+      resetFormWidget?.();
+    }
   }
 
   function tryAnother() {
@@ -325,7 +344,7 @@ export default function App() {
                     </p>
                   </Show>
 
-                  <button type="submit" disabled={!ready()}>
+                  <button type="submit" disabled={!ready()} aria-busy={busy() ? "true" : undefined}>
                     {buttonLabel()}
                   </button>
                 </form>
