@@ -53,6 +53,9 @@ resource "aws_cloudfront_origin_request_policy" "api" {
         "Origin",
         "CloudFront-Viewer-Address",
         "CloudFront-Viewer-Country",
+        # The key for GET /api/logs. A custom header because OAC signing replaces any
+        # viewer Authorization header.
+        "X-Admin-Key",
       ]
     }
   }

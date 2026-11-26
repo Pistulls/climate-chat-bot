@@ -40,6 +40,7 @@ module "hosting" {
     OPENROUTER_KEY_PARAM   = local.ssm_parameters.openrouter_api_key
     TURNSTILE_SECRET_PARAM = local.ssm_parameters.turnstile_secret_key
     LOG_HASH_KEY_PARAM     = local.ssm_parameters.log_hash_key
+    ADMIN_KEY_PARAM        = local.ssm_parameters.admin_key
     MODEL_CLASSIFY         = var.models.classify
     MODEL_FACTS            = var.models.facts
     MODEL_REPLY            = var.models.reply

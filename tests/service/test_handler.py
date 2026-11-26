@@ -4,12 +4,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from fakes import FakeLogTable
 from test_secrets import ENV
 
 from climate_chat.config import load_service_settings
 from climate_chat.openrouter import ChatResult
 from climate_chat.service.api import ApiError
-from climate_chat.service.app import App
+from climate_chat.service.app import LOGS_PAGE_MAX, App
 from climate_chat.service.pipeline import PipelineResult
 
 NOW = datetime(2026, 11, 24, 14, 5, tzinfo=UTC)
@@ -36,12 +37,19 @@ class FakePipeline:
         return self.result
 
 
+ADMIN_KEY = "k" * 43  # the length `openssl rand -base64 32` gives
+
+
 class FakeSecrets:
     def __init__(self):
         self.key = "sk-1"
+        self.admin = ADMIN_KEY
 
     def openrouter_key(self):
         return self.key
+
+    def admin_key(self):
+        return self.admin
 
     def turnstile_secret(self):
         return "ts"
@@ -318,3 +326,76 @@ def test_context_caps_come_from_settings():
     h.app.settings = replace(h.app.settings, max_subject_chars=5)
     response = h.call(url_event({**GOOD, "subject": "123456"}))
     assert json.loads(response["body"])["error"] == "subject_too_long"
+
+
+# --- GET /api/logs: the request logs, behind the admin key ---
+
+
+def logs_event(key=ADMIN_KEY, method="GET", query=""):
+    headers = {"cloudfront-viewer-address": "203.0.113.9:443"}
+    if key is not None:
+        headers["x-admin-key"] = key
+    event = url_event(method=method, path="/api/logs", headers=headers)
+    event["rawQueryString"] = query
+    return event
+
+
+def logs_harness(items=()):
+    h = Harness()
+    h.app.log_table = FakeLogTable(list(items))
+    return h
+
+
+ROW = {"pk": f"day#{NOW:%Y-%m-%d}", "sk": f"{NOW:%Y-%m-%d}T14:00:00.000Z#a", "comment": "hi"}
+
+
+def test_logs_with_the_admin_key():
+    h = logs_harness([ROW])
+    response = h.call(logs_event(query="limit=10"))
+    assert response["statusCode"] == 200
+    assert response["headers"]["cache-control"] == "no-store"
+    body = payload(response)
+    assert body["table"] == "logs"
+    assert [i["request_id"] for i in body["items"]] == ["a"]
+    assert h.table.items == []  # reading the logs is not itself logged
+
+
+@pytest.mark.parametrize("key", [None, "", "wrong", ADMIN_KEY + "x", ADMIN_KEY[:-1]])
+def test_logs_without_the_right_key_is_a_plain_404(key):
+    response = logs_harness([ROW]).call(logs_event(key=key))
+    assert response["statusCode"] == 404
+    assert payload(response)["error"] == "not_found"
+
+
+@pytest.mark.parametrize("stored", ["CHANGE_ME", "", "short-key"])
+def test_logs_refused_while_the_stored_key_is_a_placeholder(stored):
+    h = logs_harness([ROW])
+    h.secrets.admin = stored
+    assert h.call(logs_event(key=stored))["statusCode"] == 404
+
+
+def test_logs_key_checked_before_the_method():
+    assert logs_harness().call(logs_event(key="wrong", method="POST"))["statusCode"] == 404
+    assert logs_harness().call(logs_event(method="POST"))["statusCode"] == 405
+
+
+def test_logs_bad_query_is_400():
+    assert logs_harness().call(logs_event(query="limit=ten"))["statusCode"] == 400
+    response = logs_harness().call(logs_event(query="cursor=nonsense!"))
+    assert (response["statusCode"], payload(response)["error"]) == (400, "bad_cursor")
+
+
+def test_logs_page_size_is_capped():
+    h = logs_harness()
+    h.call(logs_event(query="limit=100000"))
+    assert h.app.log_table.queries[0]["Limit"] == LOGS_PAGE_MAX
+
+
+def test_logs_admin_key_failure_is_500(capsys):
+    h = logs_harness()
+
+    def broken():
+        raise RuntimeError("ssm down")
+
+    h.secrets.admin_key = broken
+    assert h.call(logs_event())["statusCode"] == 500

@@ -2,7 +2,8 @@
 
     uv run python -m climate_chat.service.local [--port 8000]
 
-Each HTTP request becomes a Lambda function URL event for the same handler the Lambda runs.
+Each HTTP request becomes a Lambda function URL event for the same handler the Lambda runs,
+so POST /api/chat and GET /api/logs (with X-Admin-Key) behave exactly as in prod.
 Settings and secrets come from .env (see .env.example). Listens on 127.0.0.1 only.
 """
 
@@ -17,8 +18,10 @@ from urllib.parse import urlsplit
 
 
 def to_event(method: str, path: str, headers: dict[str, str], body: bytes) -> dict[str, Any]:
+    url = urlsplit(path)
     return {
-        "rawPath": urlsplit(path).path,
+        "rawPath": url.path,
+        "rawQueryString": url.query,
         "requestContext": {"http": {"method": method}, "requestId": str(uuid.uuid4())},
         "headers": {k.lower(): v for k, v in headers.items()},
         "body": body.decode("utf-8") if body else None,

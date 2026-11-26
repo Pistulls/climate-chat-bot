@@ -39,6 +39,11 @@ class SecretStore:
         s = self._settings
         return s.log_hash_key or self._from_ssm(s.log_hash_key_param)
 
+    def admin_key(self) -> str:
+        """The key for GET /api/logs. SSM holds a placeholder until it is set."""
+        s = self._settings
+        return s.admin_key or self._from_ssm(s.admin_key_param)
+
     def _from_ssm(self, name: str) -> str:
         cached = self._cache.get(name)
         if cached and self._clock() - cached[1] < TTL_SECONDS:

@@ -24,6 +24,8 @@ SSM_PARAMS = {
     "prod_turnstile": "/climate-chat/prod/turnstile-secret-key",
     "dev_log_hash": "/climate-chat/dev/log-hash-key",
     "prod_log_hash": "/climate-chat/prod/log-hash-key",
+    "dev_admin": "/climate-chat/dev/admin-key",
+    "prod_admin": "/climate-chat/prod/admin-key",
 }
 
 # Starting points from Design.md; tuned in plan 03 and overridden by environment variables.
@@ -192,9 +194,11 @@ class ServiceSettings:
     openrouter_key_param: str
     turnstile_secret_param: str
     log_hash_key_param: str
+    admin_key_param: str  # the key for GET /api/logs
     openrouter_api_key: str | None
     turnstile_secret_key: str | None
     log_hash_key: str | None
+    admin_key: str | None
 
 
 def load_service_settings(
@@ -260,7 +264,9 @@ def load_service_settings(
         openrouter_key_param=param("OPENROUTER_KEY_PARAM", "openrouter-api-key"),
         turnstile_secret_param=param("TURNSTILE_SECRET_PARAM", "turnstile-secret-key"),
         log_hash_key_param=param("LOG_HASH_KEY_PARAM", "log-hash-key"),
+        admin_key_param=param("ADMIN_KEY_PARAM", "admin-key"),
         openrouter_api_key=get("OPENROUTER_API_KEY"),
         turnstile_secret_key=get("TURNSTILE_SECRET_KEY"),
         log_hash_key=get("LOG_HASH_KEY"),
+        admin_key=get("ADMIN_KEY"),
     )
